@@ -2,6 +2,10 @@
 
 [English](README.md) | [中文](README_CN.md)
 
+[![Website](https://img.shields.io/badge/Website-microclaw.ai-blue)](https://microclaw.ai)
+[![Discord](https://img.shields.io/discord/1469628852983697482?logo=discord&label=Discord&color=5865F2)](https://discord.gg/pvmezwkAk5)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 > **注意：** 本项目正在积极开发中，功能可能会变化，欢迎贡献！
 
 <p align="center">
