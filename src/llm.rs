@@ -25,9 +25,9 @@ pub trait LlmProvider: Send + Sync {
 }
 
 pub fn create_provider(config: &Config) -> Box<dyn LlmProvider> {
-    match config.llm_provider.as_str() {
-        "openai" => Box::new(OpenAiProvider::new(config)),
-        _ => Box::new(AnthropicProvider::new(config)),
+    match config.llm_provider.trim().to_lowercase().as_str() {
+        "anthropic" => Box::new(AnthropicProvider::new(config)),
+        _ => Box::new(OpenAiProvider::new(config)),
     }
 }
 

@@ -249,7 +249,7 @@ All configuration is via environment variables (or `.env` file):
 | `TELEGRAM_BOT_TOKEN` | Yes | -- | Telegram bot token from BotFather |
 | `LLM_API_KEY` | Yes | -- | LLM API key (`ANTHROPIC_API_KEY` also accepted for backward compatibility) |
 | `BOT_USERNAME` | Yes | -- | Bot username (without @) |
-| `LLM_PROVIDER` | No | `anthropic` | Provider: `anthropic` or `openai` |
+| `LLM_PROVIDER` | No | `anthropic` | Provider preset ID (or custom ID). `anthropic` uses native Anthropic API, others use OpenAI-compatible API |
 | `LLM_MODEL` | No | provider-specific | Model name (`CLAUDE_MODEL` fallback still supported) |
 | `LLM_BASE_URL` | No | provider default | Custom provider base URL (OpenRouter/DeepSeek/Groq/Ollama, etc.) |
 | `DATA_DIR` | No | `./data` | Directory for SQLite DB and memory files |

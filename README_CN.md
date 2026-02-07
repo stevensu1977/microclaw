@@ -246,7 +246,7 @@ microclaw start
 | `TELEGRAM_BOT_TOKEN` | 是 | -- | BotFather 的 Telegram bot token |
 | `LLM_API_KEY` | 是 | -- | LLM API key（兼容 `ANTHROPIC_API_KEY`） |
 | `BOT_USERNAME` | 是 | -- | Bot 用户名（不带 @） |
-| `LLM_PROVIDER` | 否 | `anthropic` | 提供方：`anthropic` 或 `openai` |
+| `LLM_PROVIDER` | 否 | `anthropic` | 提供方预设 ID（或自定义 ID）。`anthropic` 走原生 Anthropic API，其他走 OpenAI 兼容 API |
 | `LLM_MODEL` | 否 | 随 provider 默认 | 模型名（仍兼容 `CLAUDE_MODEL`） |
 | `LLM_BASE_URL` | 否 | provider 默认 | 自定义 API 基础地址（OpenRouter/DeepSeek/Groq/Ollama 等） |
 | `DATA_DIR` | 否 | `./data` | SQLite 和记忆文件目录 |

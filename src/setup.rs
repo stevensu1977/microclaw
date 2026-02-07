@@ -13,7 +13,7 @@ use crossterm::terminal::{
 use ratatui::layout::{Constraint, Direction, Layout, Margin};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use ratatui::DefaultTerminal;
 
 use crate::error::MicroClawError;
@@ -28,6 +28,209 @@ const ENV_KEYS: &[&str] = &[
     "DATA_DIR",
     "TIMEZONE",
 ];
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ProviderProtocol {
+    Anthropic,
+    OpenAiCompat,
+}
+
+#[derive(Clone, Copy)]
+struct ProviderPreset {
+    id: &'static str,
+    label: &'static str,
+    protocol: ProviderProtocol,
+    default_base_url: &'static str,
+    models: &'static [&'static str],
+}
+
+const PROVIDER_PRESETS: &[ProviderPreset] = &[
+    ProviderPreset {
+        id: "openai",
+        label: "OpenAI",
+        protocol: ProviderProtocol::OpenAiCompat,
+        default_base_url: "https://api.openai.com/v1",
+        models: &["gpt-5", "gpt-5-mini", "gpt-4.1", "gpt-4o"],
+    },
+    ProviderPreset {
+        id: "openrouter",
+        label: "OpenRouter",
+        protocol: ProviderProtocol::OpenAiCompat,
+        default_base_url: "https://openrouter.ai/api/v1",
+        models: &[
+            "openrouter/auto",
+            "anthropic/claude-sonnet-4",
+            "openai/gpt-5-mini",
+        ],
+    },
+    ProviderPreset {
+        id: "anthropic",
+        label: "Anthropic",
+        protocol: ProviderProtocol::Anthropic,
+        default_base_url: "",
+        models: &["claude-sonnet-4-20250514", "claude-opus-4-20250514"],
+    },
+    ProviderPreset {
+        id: "google",
+        label: "Google DeepMind",
+        protocol: ProviderProtocol::OpenAiCompat,
+        default_base_url: "https://generativelanguage.googleapis.com/v1beta/openai",
+        models: &["gemini-2.5-pro", "gemini-2.5-flash"],
+    },
+    ProviderPreset {
+        id: "alibaba",
+        label: "Alibaba Cloud (Qwen / DashScope)",
+        protocol: ProviderProtocol::OpenAiCompat,
+        default_base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        models: &["qwen-max-latest", "qwen-plus-latest"],
+    },
+    ProviderPreset {
+        id: "deepseek",
+        label: "DeepSeek",
+        protocol: ProviderProtocol::OpenAiCompat,
+        default_base_url: "https://api.deepseek.com/v1",
+        models: &["deepseek-chat", "deepseek-reasoner"],
+    },
+    ProviderPreset {
+        id: "moonshot",
+        label: "Moonshot AI (Kimi)",
+        protocol: ProviderProtocol::OpenAiCompat,
+        default_base_url: "https://api.moonshot.cn/v1",
+        models: &["kimi-k2-0711-preview", "moonshot-v1-8k"],
+    },
+    ProviderPreset {
+        id: "mistral",
+        label: "Mistral AI",
+        protocol: ProviderProtocol::OpenAiCompat,
+        default_base_url: "https://api.mistral.ai/v1",
+        models: &["mistral-large-latest", "ministral-8b-latest"],
+    },
+    ProviderPreset {
+        id: "azure",
+        label: "Microsoft Azure AI",
+        protocol: ProviderProtocol::OpenAiCompat,
+        default_base_url:
+            "https://YOUR-RESOURCE.openai.azure.com/openai/deployments/YOUR-DEPLOYMENT",
+        models: &["gpt-4o", "gpt-4.1"],
+    },
+    ProviderPreset {
+        id: "bedrock",
+        label: "Amazon AWS Bedrock",
+        protocol: ProviderProtocol::OpenAiCompat,
+        default_base_url: "https://bedrock-runtime.YOUR-REGION.amazonaws.com/openai/v1",
+        models: &["anthropic.claude-3-5-sonnet-20241022-v2:0"],
+    },
+    ProviderPreset {
+        id: "zhipu",
+        label: "Zhipu AI (GLM / Z.AI)",
+        protocol: ProviderProtocol::OpenAiCompat,
+        default_base_url: "https://open.bigmodel.cn/api/paas/v4",
+        models: &["glm-4-plus", "glm-4.5"],
+    },
+    ProviderPreset {
+        id: "minimax",
+        label: "MiniMax",
+        protocol: ProviderProtocol::OpenAiCompat,
+        default_base_url: "https://api.minimax.chat/v1",
+        models: &["minimax-text-01", "abab6.5s-chat"],
+    },
+    ProviderPreset {
+        id: "cohere",
+        label: "Cohere",
+        protocol: ProviderProtocol::OpenAiCompat,
+        default_base_url: "https://api.cohere.ai/compatibility/v1",
+        models: &["command-r-plus-08-2024", "command-r7b-12-2024"],
+    },
+    ProviderPreset {
+        id: "baidu",
+        label: "Baidu AI",
+        protocol: ProviderProtocol::OpenAiCompat,
+        default_base_url: "https://qianfan.baidubce.com/v2",
+        models: &["ernie-4.0-8k", "ernie-3.5-8k"],
+    },
+    ProviderPreset {
+        id: "tencent",
+        label: "Tencent AI Lab",
+        protocol: ProviderProtocol::OpenAiCompat,
+        default_base_url: "https://api.hunyuan.cloud.tencent.com/v1",
+        models: &["hunyuan-turbos-latest", "hunyuan-large"],
+    },
+    ProviderPreset {
+        id: "huawei",
+        label: "Huawei Cloud (Pangu)",
+        protocol: ProviderProtocol::OpenAiCompat,
+        default_base_url:
+            "https://infer-modelarts-cn-southwest-2.modelarts-infer.com/v1/infers/YOUR-INFER-ID",
+        models: &["pangu-pro", "pangu-ultra"],
+    },
+    ProviderPreset {
+        id: "xai",
+        label: "xAI",
+        protocol: ProviderProtocol::OpenAiCompat,
+        default_base_url: "https://api.x.ai/v1",
+        models: &["grok-3-beta", "grok-3-mini-beta"],
+    },
+    ProviderPreset {
+        id: "huggingface",
+        label: "Hugging Face",
+        protocol: ProviderProtocol::OpenAiCompat,
+        default_base_url: "https://router.huggingface.co/v1",
+        models: &[
+            "meta-llama/Llama-3.3-70B-Instruct",
+            "Qwen/Qwen3-32B-Instruct",
+        ],
+    },
+    ProviderPreset {
+        id: "together",
+        label: "Together AI",
+        protocol: ProviderProtocol::OpenAiCompat,
+        default_base_url: "https://api.together.xyz/v1",
+        models: &[
+            "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
+            "deepseek-ai/DeepSeek-V3",
+        ],
+    },
+    ProviderPreset {
+        id: "perplexity",
+        label: "Perplexity AI",
+        protocol: ProviderProtocol::OpenAiCompat,
+        default_base_url: "https://api.perplexity.ai",
+        models: &["sonar-pro", "sonar-reasoning-pro"],
+    },
+    ProviderPreset {
+        id: "custom",
+        label: "Custom (manual config)",
+        protocol: ProviderProtocol::OpenAiCompat,
+        default_base_url: "",
+        models: &["custom-model"],
+    },
+];
+
+fn find_provider_preset(provider: &str) -> Option<&'static ProviderPreset> {
+    PROVIDER_PRESETS
+        .iter()
+        .find(|p| p.id.eq_ignore_ascii_case(provider))
+}
+
+fn provider_protocol(provider: &str) -> ProviderProtocol {
+    find_provider_preset(provider)
+        .map(|p| p.protocol)
+        .unwrap_or(ProviderProtocol::OpenAiCompat)
+}
+
+fn default_model_for_provider(provider: &str) -> &'static str {
+    find_provider_preset(provider)
+        .and_then(|p| p.models.first().copied())
+        .unwrap_or("gpt-4o")
+}
+
+fn provider_display(provider: &str) -> String {
+    if let Some(preset) = find_provider_preset(provider) {
+        format!("{} ({})", preset.id, preset.label)
+    } else {
+        format!("{provider} (custom)")
+    }
+}
 
 #[derive(Clone)]
 struct Field {
@@ -55,21 +258,33 @@ struct SetupApp {
     fields: Vec<Field>,
     selected: usize,
     editing: bool,
+    picker: Option<PickerState>,
     status: String,
     completed: bool,
     backup_path: Option<String>,
     completion_summary: Vec<String>,
 }
 
+#[derive(Clone, Copy)]
+enum PickerKind {
+    Provider,
+    Model,
+}
+
+#[derive(Clone, Copy)]
+struct PickerState {
+    kind: PickerKind,
+    selected: usize,
+}
+
 impl SetupApp {
     fn new() -> Self {
         dotenvy::dotenv().ok();
         let provider = std::env::var("LLM_PROVIDER").unwrap_or_else(|_| "anthropic".into());
-        let default_model = if provider == "openai" {
-            "gpt-4o"
-        } else {
-            "claude-sonnet-4-20250514"
-        };
+        let default_model = default_model_for_provider(&provider);
+        let default_base_url = find_provider_preset(&provider)
+            .map(|p| p.default_base_url)
+            .unwrap_or("");
         let llm_api_key = std::env::var("LLM_API_KEY")
             .or_else(|_| std::env::var("ANTHROPIC_API_KEY"))
             .unwrap_or_default();
@@ -92,7 +307,7 @@ impl SetupApp {
                 },
                 Field {
                     key: "LLM_PROVIDER",
-                    label: "LLM provider (anthropic/openai)",
+                    label: "LLM provider (preset/custom)",
                     value: provider,
                     required: true,
                     secret: false,
@@ -116,7 +331,8 @@ impl SetupApp {
                 Field {
                     key: "LLM_BASE_URL",
                     label: "LLM base URL (optional)",
-                    value: std::env::var("LLM_BASE_URL").unwrap_or_default(),
+                    value: std::env::var("LLM_BASE_URL")
+                        .unwrap_or_else(|_| default_base_url.to_string()),
                     required: false,
                     secret: false,
                 },
@@ -137,7 +353,10 @@ impl SetupApp {
             ],
             selected: 0,
             editing: false,
-            status: "Use ↑/↓ select field, Enter edit, F2 validate, s/Ctrl+S save, q quit".into(),
+            picker: None,
+            status:
+                "Use ↑/↓ select field, Enter to edit or choose list, F2 validate, s/Ctrl+S save, q quit"
+                    .into(),
             completed: false,
             backup_path: None,
             completion_summary: Vec::new(),
@@ -189,11 +408,9 @@ impl SetupApp {
             }
         }
 
-        let provider = self.field_value("LLM_PROVIDER").to_lowercase();
-        if provider != "anthropic" && provider != "openai" {
-            return Err(MicroClawError::Config(
-                "LLM_PROVIDER must be 'anthropic' or 'openai'".into(),
-            ));
+        let provider = self.field_value("LLM_PROVIDER");
+        if provider.is_empty() {
+            return Err(MicroClawError::Config("LLM_PROVIDER is required".into()));
         }
 
         let username = self.field_value("BOT_USERNAME");
@@ -243,19 +460,180 @@ impl SetupApp {
     }
 
     fn set_provider(&mut self, provider: &str) {
+        let old_provider = self.field_value("LLM_PROVIDER");
+        let old_base_url = self.field_value("LLM_BASE_URL");
+        let old_model = self.field_value("LLM_MODEL");
+
         if let Some(field) = self.fields.iter_mut().find(|f| f.key == "LLM_PROVIDER") {
             field.value = provider.to_string();
         }
+        if let Some(base) = self.fields.iter_mut().find(|f| f.key == "LLM_BASE_URL") {
+            let next_default = find_provider_preset(provider)
+                .map(|p| p.default_base_url)
+                .unwrap_or("");
+            let old_default = find_provider_preset(&old_provider)
+                .map(|p| p.default_base_url)
+                .unwrap_or("");
+            if old_base_url.trim().is_empty() || old_base_url == old_default {
+                base.value = next_default.to_string();
+            }
+        }
         if let Some(model) = self.fields.iter_mut().find(|f| f.key == "LLM_MODEL") {
-            if model.value.trim().is_empty()
-                || model.value == "gpt-4o"
-                || model.value == "claude-sonnet-4-20250514"
-            {
-                model.value = if provider == "openai" {
-                    "gpt-4o".into()
-                } else {
-                    "claude-sonnet-4-20250514".into()
-                };
+            let old_in_old_preset = find_provider_preset(&old_provider)
+                .map(|p| p.models.iter().any(|m| *m == old_model))
+                .unwrap_or(false);
+            if old_model.trim().is_empty() || old_in_old_preset {
+                model.value = default_model_for_provider(provider).to_string();
+            }
+        }
+    }
+
+    fn cycle_provider(&mut self, direction: i32) {
+        if PROVIDER_PRESETS.is_empty() {
+            return;
+        }
+        let current = self.field_value("LLM_PROVIDER");
+        let current_idx = PROVIDER_PRESETS
+            .iter()
+            .position(|p| p.id.eq_ignore_ascii_case(&current))
+            .unwrap_or(PROVIDER_PRESETS.len() - 1);
+        let next_idx = if direction < 0 {
+            if current_idx == 0 {
+                PROVIDER_PRESETS.len() - 1
+            } else {
+                current_idx - 1
+            }
+        } else {
+            (current_idx + 1) % PROVIDER_PRESETS.len()
+        };
+        self.set_provider(PROVIDER_PRESETS[next_idx].id);
+    }
+
+    fn cycle_model(&mut self, direction: i32) {
+        let provider = self.field_value("LLM_PROVIDER");
+        let preset = match find_provider_preset(&provider) {
+            Some(p) => p,
+            None => return,
+        };
+        if preset.models.is_empty() {
+            return;
+        }
+        let current = self.field_value("LLM_MODEL");
+        let current_idx = preset
+            .models
+            .iter()
+            .position(|m| *m == current)
+            .unwrap_or(0);
+        let next_idx = if direction < 0 {
+            if current_idx == 0 {
+                preset.models.len() - 1
+            } else {
+                current_idx - 1
+            }
+        } else {
+            (current_idx + 1) % preset.models.len()
+        };
+        if let Some(model) = self.fields.iter_mut().find(|f| f.key == "LLM_MODEL") {
+            model.value = preset.models[next_idx].to_string();
+        }
+    }
+
+    fn provider_index(&self, provider: &str) -> usize {
+        PROVIDER_PRESETS
+            .iter()
+            .position(|p| p.id.eq_ignore_ascii_case(provider))
+            .unwrap_or(PROVIDER_PRESETS.len().saturating_sub(1))
+    }
+
+    fn model_options(&self) -> Vec<String> {
+        let provider = self.field_value("LLM_PROVIDER");
+        if let Some(preset) = find_provider_preset(&provider) {
+            preset.models.iter().map(|m| (*m).to_string()).collect()
+        } else {
+            vec![self.field_value("LLM_MODEL")]
+        }
+    }
+
+    fn open_picker_for_selected(&mut self) -> bool {
+        match self.selected_field().key {
+            "LLM_PROVIDER" => {
+                let idx = self.provider_index(&self.field_value("LLM_PROVIDER"));
+                self.picker = Some(PickerState {
+                    kind: PickerKind::Provider,
+                    selected: idx,
+                });
+                true
+            }
+            "LLM_MODEL" => {
+                let provider = self.field_value("LLM_PROVIDER");
+                if provider.eq_ignore_ascii_case("custom") {
+                    return false;
+                }
+                let options = self.model_options();
+                if options.is_empty() {
+                    return false;
+                }
+                let current_model = self.field_value("LLM_MODEL");
+                let idx = options
+                    .iter()
+                    .position(|m| *m == current_model)
+                    .unwrap_or(0);
+                self.picker = Some(PickerState {
+                    kind: PickerKind::Model,
+                    selected: idx,
+                });
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn move_picker(&mut self, direction: i32) {
+        let Some(picker) = self.picker.as_ref() else {
+            return;
+        };
+        let kind = picker.kind;
+        let selected = picker.selected;
+        let options_len = match kind {
+            PickerKind::Provider => PROVIDER_PRESETS.len(),
+            PickerKind::Model => self.model_options().len(),
+        };
+        if options_len == 0 {
+            return;
+        }
+        let next = if direction < 0 {
+            if selected == 0 {
+                options_len - 1
+            } else {
+                selected - 1
+            }
+        } else {
+            (selected + 1) % options_len
+        };
+        if let Some(picker_mut) = self.picker.as_mut() {
+            picker_mut.selected = next;
+        }
+    }
+
+    fn apply_picker_selection(&mut self) {
+        let Some(picker) = self.picker.take() else {
+            return;
+        };
+        match picker.kind {
+            PickerKind::Provider => {
+                if let Some(preset) = PROVIDER_PRESETS.get(picker.selected) {
+                    self.set_provider(preset.id);
+                    self.status = format!("Provider set to {}", preset.id);
+                }
+            }
+            PickerKind::Model => {
+                let options = self.model_options();
+                if let Some(chosen) = options.get(picker.selected) {
+                    if let Some(model) = self.fields.iter_mut().find(|f| f.key == "LLM_MODEL") {
+                        model.value = chosen.clone();
+                        self.status = format!("Model set to {chosen}");
+                    }
+                }
             }
         }
     }
@@ -321,29 +699,30 @@ fn perform_online_validation(
         checks.push(format!("Telegram OK ({actual_username})"));
     }
 
-    if provider == "openai" {
-        let base = if base_url.is_empty() {
-            "https://api.openai.com".to_string()
-        } else {
-            base_url.trim_end_matches('/').to_string()
-        };
-        let status = client
-            .get(format!("{base}/v1/models"))
-            .bearer_auth(api_key)
-            .send()?
-            .status();
-        if !status.is_success() {
-            return Err(MicroClawError::Config(format!(
-                "OpenAI validation failed: HTTP {status}"
-            )));
-        }
-        checks.push("LLM OK (openai)".into());
-    } else {
-        let base = if base_url.is_empty() {
+    let preset = find_provider_preset(provider);
+    let protocol = provider_protocol(provider);
+    let should_skip_models_check = matches!(
+        provider,
+        "azure" | "bedrock" | "huawei" | "baidu" | "tencent"
+    );
+
+    if should_skip_models_check {
+        checks.push(format!(
+            "LLM check skipped for provider '{}' (non-standard models endpoint)",
+            preset.map(|p| p.label).unwrap_or(provider)
+        ));
+        return Ok(checks);
+    }
+
+    if protocol == ProviderProtocol::Anthropic {
+        let mut base = if base_url.is_empty() {
             "https://api.anthropic.com".to_string()
         } else {
             base_url.trim_end_matches('/').to_string()
         };
+        if base.ends_with("/v1/messages") {
+            base = base.trim_end_matches("/v1/messages").to_string();
+        }
         let status = client
             .get(format!("{base}/v1/models"))
             .header("x-api-key", api_key)
@@ -355,7 +734,31 @@ fn perform_online_validation(
                 "Anthropic validation failed: HTTP {status}"
             )));
         }
-        checks.push("LLM OK (anthropic)".into());
+        checks.push("LLM OK (anthropic-compatible)".into());
+    } else {
+        let mut base = if base_url.is_empty() {
+            preset
+                .map(|p| p.default_base_url)
+                .filter(|s| !s.is_empty())
+                .unwrap_or("https://api.openai.com/v1")
+                .to_string()
+        } else {
+            base_url.trim_end_matches('/').to_string()
+        };
+        if !base.ends_with("/v1") {
+            base = format!("{}/v1", base.trim_end_matches('/'));
+        }
+        let status = client
+            .get(format!("{base}/models"))
+            .bearer_auth(api_key)
+            .send()?
+            .status();
+        if !status.is_success() {
+            return Err(MicroClawError::Config(format!(
+                "OpenAI-compatible validation failed: HTTP {status}"
+            )));
+        }
+        checks.push("LLM OK (openai-compatible)".into());
     }
 
     Ok(checks)
@@ -505,7 +908,11 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &SetupApp) {
         } else {
             f.label.to_string()
         };
-        let value = f.display_value(selected && app.editing);
+        let value = if f.key == "LLM_PROVIDER" {
+            provider_display(&f.value)
+        } else {
+            f.display_value(selected && app.editing)
+        };
         let prefix = if selected { "▶" } else { " " };
         let color = if selected {
             Color::Yellow
@@ -543,9 +950,11 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &SetupApp) {
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD),
         )),
-        Line::from("• Enter: edit/save current field"),
+        Line::from("• Enter: edit current field / open selection list"),
         Line::from("• Tab / Shift+Tab: next/previous field"),
-        Line::from("• ←/→ on provider: anthropic/openai"),
+        Line::from("• ↑/↓ in list: move item, Enter: confirm, Esc: close"),
+        Line::from("• ←/→ on provider/model: quick rotate presets"),
+        Line::from("• e: force manual text edit"),
         Line::from("• F2: validate + online checks"),
         Line::from("• s or Ctrl+S: save to .env"),
     ])
@@ -571,6 +980,44 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &SetupApp) {
     ])])
     .block(Block::default().borders(Borders::ALL).title("Status"));
     frame.render_widget(status, chunks[2]);
+
+    if let Some(picker) = app.picker {
+        let overlay_area = frame.area().inner(Margin::new(8, 4));
+        let (title, options): (&str, Vec<String>) = match picker.kind {
+            PickerKind::Provider => (
+                "Select LLM Provider",
+                PROVIDER_PRESETS
+                    .iter()
+                    .map(|p| format!("{} ({})", p.id, p.label))
+                    .collect(),
+            ),
+            PickerKind::Model => ("Select LLM Model", app.model_options()),
+        };
+        let mut list_lines = Vec::with_capacity(options.len());
+        for (i, item) in options.iter().enumerate() {
+            let selected = i == picker.selected;
+            let prefix = if selected { "▶ " } else { "  " };
+            let style = if selected {
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::White)
+            };
+            list_lines.push(Line::from(Span::styled(format!("{prefix}{item}"), style)));
+        }
+        let overlay = Paragraph::new(list_lines)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(title)
+                    .style(Style::default().bg(Color::Black)),
+            )
+            .style(Style::default().bg(Color::Black))
+            .wrap(Wrap { trim: false });
+        frame.render_widget(Clear, overlay_area);
+        frame.render_widget(overlay, overlay_area);
+    }
 }
 
 fn try_save(app: &mut SetupApp) {
@@ -612,6 +1059,20 @@ fn run_wizard(mut terminal: DefaultTerminal) -> Result<bool, MicroClawError> {
                 }
             }
 
+            if app.picker.is_some() {
+                match key.code {
+                    KeyCode::Esc => {
+                        app.picker = None;
+                        app.status = "Selection closed".into();
+                    }
+                    KeyCode::Up => app.move_picker(-1),
+                    KeyCode::Down => app.move_picker(1),
+                    KeyCode::Enter => app.apply_picker_selection(),
+                    _ => {}
+                }
+                continue;
+            }
+
             if app.editing {
                 match key.code {
                     KeyCode::Esc => {
@@ -640,20 +1101,34 @@ fn run_wizard(mut terminal: DefaultTerminal) -> Result<bool, MicroClawError> {
                 KeyCode::Tab => app.next(),
                 KeyCode::BackTab => app.prev(),
                 KeyCode::Enter => {
-                    app.editing = true;
-                    app.status = format!("Editing {}", app.selected_field().key);
+                    if app.open_picker_for_selected() {
+                        app.status = format!("Selecting {}", app.selected_field().key);
+                    } else {
+                        app.editing = true;
+                        app.status = format!("Editing {}", app.selected_field().key);
+                    }
                 }
                 KeyCode::Left => {
                     if app.selected_field().key == "LLM_PROVIDER" {
-                        app.set_provider("anthropic");
-                        app.status = "Provider set to anthropic".into();
+                        app.cycle_provider(-1);
+                        app.status = format!("Provider set to {}", app.field_value("LLM_PROVIDER"));
+                    } else if app.selected_field().key == "LLM_MODEL" {
+                        app.cycle_model(-1);
+                        app.status = format!("Model set to {}", app.field_value("LLM_MODEL"));
                     }
                 }
                 KeyCode::Right => {
                     if app.selected_field().key == "LLM_PROVIDER" {
-                        app.set_provider("openai");
-                        app.status = "Provider set to openai".into();
+                        app.cycle_provider(1);
+                        app.status = format!("Provider set to {}", app.field_value("LLM_PROVIDER"));
+                    } else if app.selected_field().key == "LLM_MODEL" {
+                        app.cycle_model(1);
+                        app.status = format!("Model set to {}", app.field_value("LLM_MODEL"));
                     }
+                }
+                KeyCode::Char('e') => {
+                    app.editing = true;
+                    app.status = format!("Editing {}", app.selected_field().key);
                 }
                 KeyCode::F(2) => match app.validate_local().and_then(|_| app.validate_online()) {
                     Ok(checks) => app.status = format!("Validation passed: {}", checks.join(" | ")),

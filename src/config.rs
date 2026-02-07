@@ -34,7 +34,10 @@ impl Config {
             .map_err(|_| MicroClawError::Config("BOT_USERNAME not set".into()))?;
 
         // LLM provider config with backward-compatible env var fallbacks
-        let llm_provider = std::env::var("LLM_PROVIDER").unwrap_or_else(|_| "anthropic".into());
+        let llm_provider = std::env::var("LLM_PROVIDER")
+            .unwrap_or_else(|_| "anthropic".into())
+            .trim()
+            .to_lowercase();
 
         let api_key = std::env::var("LLM_API_KEY")
             .or_else(|_| std::env::var("ANTHROPIC_API_KEY"))
@@ -43,8 +46,8 @@ impl Config {
             })?;
 
         let default_model = match llm_provider.as_str() {
-            "openai" => "gpt-4o",
-            _ => "claude-sonnet-4-20250514",
+            "anthropic" => "claude-sonnet-4-20250514",
+            _ => "gpt-4o",
         };
         let model = std::env::var("LLM_MODEL")
             .or_else(|_| std::env::var("CLAUDE_MODEL"))

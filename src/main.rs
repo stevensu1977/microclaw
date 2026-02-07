@@ -58,7 +58,7 @@ SETUP:
     3. Run: microclaw start
 
 LLM PROVIDER ENV VARS:
-    LLM_PROVIDER             Provider: "anthropic" or "openai" (default: anthropic)
+    LLM_PROVIDER             Provider preset or custom ID (default: anthropic)
     LLM_API_KEY              API key (falls back to ANTHROPIC_API_KEY)
     LLM_MODEL                Model name (falls back to CLAUDE_MODEL)
     LLM_BASE_URL             Custom base URL for the provider (optional)
