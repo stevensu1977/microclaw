@@ -663,6 +663,38 @@ impl SetupApp {
         }
     }
 
+    fn default_value_for_field(&self, key: &str) -> String {
+        let provider = self.field_value("LLM_PROVIDER");
+        match key {
+            "TELEGRAM_BOT_TOKEN" | "BOT_USERNAME" | "LLM_API_KEY" => String::new(),
+            "LLM_PROVIDER" => "anthropic".into(),
+            "LLM_MODEL" => default_model_for_provider(&provider).into(),
+            "LLM_BASE_URL" => find_provider_preset(&provider)
+                .map(|p| p.default_base_url.to_string())
+                .unwrap_or_default(),
+            "DATA_DIR" => "./microclaw.data".into(),
+            "TIMEZONE" => "UTC".into(),
+            _ => String::new(),
+        }
+    }
+
+    fn clear_selected_field(&mut self) {
+        let key = self.selected_field().key;
+        self.selected_field_mut().value.clear();
+        self.status = format!("Cleared {key}");
+    }
+
+    fn restore_selected_field_default(&mut self) {
+        let key = self.selected_field().key;
+        let default = self.default_value_for_field(key);
+        if default.is_empty() {
+            self.status = format!("{key} has no default");
+        } else {
+            self.selected_field_mut().value = default.clone();
+            self.status = format!("Restored {key} to default: {default}");
+        }
+    }
+
     fn current_section(&self) -> &'static str {
         match self.selected {
             0..=1 => "Telegram",
@@ -975,13 +1007,15 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &SetupApp) {
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD),
         )),
-        Line::from("• Enter: edit current field / open selection list"),
-        Line::from("• Tab / Shift+Tab: next/previous field"),
-        Line::from("• ↑/↓ in list: move item, Enter: confirm, Esc: close"),
-        Line::from("• ←/→ on provider/model: quick rotate presets"),
+        Line::from("• Enter: edit field / open selection list"),
+        Line::from("• Tab / Shift+Tab: next/prev field"),
+        Line::from("• ↑/↓ in list: move, Enter: confirm, Esc: close"),
+        Line::from("• ←/→ on provider/model: rotate presets"),
         Line::from("• e: force manual text edit"),
+        Line::from("• Ctrl+D / Del: clear field"),
+        Line::from("• Ctrl+R: restore field default"),
         Line::from("• F2: validate + online checks"),
-        Line::from("• s or Ctrl+S: save to microclaw.config.yaml"),
+        Line::from("• s / Ctrl+S: save config"),
     ])
     .block(
         Block::default()
@@ -1111,6 +1145,12 @@ fn run_wizard(mut terminal: DefaultTerminal) -> Result<bool, MicroClawError> {
                     KeyCode::Backspace => {
                         app.selected_field_mut().value.pop();
                     }
+                    KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.clear_selected_field();
+                    }
+                    KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.restore_selected_field_default();
+                    }
                     KeyCode::Char(c) => {
                         app.selected_field_mut().value.push(c);
                     }
@@ -1154,6 +1194,15 @@ fn run_wizard(mut terminal: DefaultTerminal) -> Result<bool, MicroClawError> {
                 KeyCode::Char('e') => {
                     app.editing = true;
                     app.status = format!("Editing {}", app.selected_field().key);
+                }
+                KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    app.clear_selected_field();
+                }
+                KeyCode::Delete => {
+                    app.clear_selected_field();
+                }
+                KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    app.restore_selected_field_default();
                 }
                 KeyCode::F(2) => match app.validate_local().and_then(|_| app.validate_online()) {
                     Ok(checks) => app.status = format!("Validation passed: {}", checks.join(" | ")),
