@@ -52,7 +52,7 @@ For a deeper dive into the architecture, design decisions, and what it's like to
 - **Session resume** -- full conversation state (including tool interactions) persisted between messages; the agent keeps tool-call state across invocations
 - **Context compaction** -- when sessions grow too large, older messages are automatically summarized to stay within context limits
 - **Sub-agent** -- delegate self-contained sub-tasks to a parallel agent with restricted tools
-- **Agent skills** -- extensible skill system ([Anthropic Skills](https://github.com/anthropics/skills) compatible); skills are auto-discovered from `data/skills/` and activated on demand
+- **Agent skills** -- extensible skill system ([Anthropic Skills](https://github.com/anthropics/skills) compatible); skills are auto-discovered from `microclaw.data/skills/` and activated on demand
 - **Plan & execute** -- todo list tools for breaking down complex tasks, tracking progress step by step
 - **Web search** -- search the web via DuckDuckGo and fetch/parse web pages
 - **Scheduled tasks** -- cron-based recurring tasks and one-time scheduled tasks, managed through natural language
@@ -94,7 +94,7 @@ For a deeper dive into the architecture, design decisions, and what it's like to
 MicroClaw maintains persistent memory via `CLAUDE.md` files, inspired by Claude Code's project memory:
 
 ```
-data/runtime/groups/
+microclaw.data/runtime/groups/
     CLAUDE.md                 # Global memory (shared across all chats)
     {chat_id}/
         CLAUDE.md             # Per-chat memory
@@ -107,7 +107,7 @@ Memory is loaded into the system prompt on every request. The model can read and
 MicroClaw supports the [Anthropic Agent Skills](https://github.com/anthropics/skills) standard. Skills are modular packages that give the bot specialized capabilities for specific tasks.
 
 ```
-data/skills/
+microclaw.data/skills/
     pdf/
         SKILL.md              # Required: name, description + instructions
     docx/
@@ -121,7 +121,7 @@ data/skills/
 
 **Built-in skills:** pdf, docx, xlsx, pptx, skill-creator
 
-**Adding a skill:** Create a subdirectory under `data/skills/` with a `SKILL.md` file containing YAML frontmatter (`name` and `description`) and markdown instructions.
+**Adding a skill:** Create a subdirectory under `microclaw.data/skills/` with a `SKILL.md` file containing YAML frontmatter (`name` and `description`) and markdown instructions.
 
 **Commands:**
 - `/skills` -- list all available skills
@@ -140,7 +140,7 @@ Bot: [creates a todo plan, then executes each step, updating progress]
 4. [ ] Add documentation
 ```
 
-Todo lists are stored at `data/runtime/groups/{chat_id}/TODO.json` and persist across sessions.
+Todo lists are stored at `microclaw.data/runtime/groups/{chat_id}/TODO.json` and persist across sessions.
 
 ## Scheduling
 
@@ -244,7 +244,7 @@ The wizard provides:
 - Provider/model pickers with visible lists (`Enter` to open list, `↑/↓` to select, `Enter` to confirm)
 - Local validation (required fields, timezone, data dir write test)
 - Online validation (Telegram `getMe`, LLM API reachability)
-- Safe `.env` save with automatic backup (`.env.bak.<timestamp>`)
+- Safe `microclaw.config.yaml` save with automatic backup
 
 Provider presets available in the wizard:
 - `openai`
@@ -260,27 +260,24 @@ Provider presets available in the wizard:
 - `zhipu`
 - `minimax`
 - `cohere`
-- `baidu`
 - `tencent`
-- `huawei`
 - `xai`
 - `huggingface`
 - `together`
-- `perplexity`
 - `custom` (manual provider/model/base URL)
 
-You can still configure manually with `.env` if preferred:
+You can still configure manually with `microclaw.config.yaml`:
 
 ```
-TELEGRAM_BOT_TOKEN=123456:ABC-DEF1234...
-BOT_USERNAME=my_bot
-LLM_PROVIDER=anthropic
-LLM_API_KEY=sk-ant-...
-LLM_MODEL=claude-sonnet-4-20250514
+telegram_bot_token: "123456:ABC-DEF1234..."
+bot_username: "my_bot"
+llm_provider: "anthropic"
+api_key: "sk-ant-..."
+model: "claude-sonnet-4-20250514"
 # optional
-LLM_BASE_URL=
-DATA_DIR=./microclaw.data
-TIMEZONE=UTC
+# llm_base_url: "https://..."
+data_dir: "./microclaw.data"
+timezone: "UTC"
 ```
 
 ### 4. Run
@@ -291,22 +288,26 @@ microclaw start
 
 ## Configuration
 
-All configuration is via environment variables (or `.env` file):
+All configuration is via `microclaw.config.yaml`:
 
-| Variable | Required | Default | Description |
+| Key | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `TELEGRAM_BOT_TOKEN` | Yes | -- | Telegram bot token from BotFather |
-| `LLM_API_KEY` | Yes | -- | LLM API key (`ANTHROPIC_API_KEY` also accepted for backward compatibility) |
-| `BOT_USERNAME` | Yes | -- | Bot username (without @) |
-| `LLM_PROVIDER` | No | `anthropic` | Provider preset ID (or custom ID). `anthropic` uses native Anthropic API, others use OpenAI-compatible API |
-| `LLM_MODEL` | No | provider-specific | Model name (`CLAUDE_MODEL` fallback still supported) |
-| `LLM_BASE_URL` | No | provider preset default | Custom provider base URL |
-| `DATA_DIR` | No | `./microclaw.data` | Data root (`runtime` data in `DATA_DIR/runtime`, skills in `DATA_DIR/skills`) |
-| `MAX_TOKENS` | No | `8192` | Max tokens per model response |
-| `MAX_TOOL_ITERATIONS` | No | `25` | Max tool-use loop iterations per message |
-| `MAX_HISTORY_MESSAGES` | No | `50` | Number of recent messages sent as context |
-| `MAX_SESSION_MESSAGES` | No | `40` | Message count threshold that triggers context compaction |
-| `COMPACT_KEEP_RECENT` | No | `20` | Number of recent messages to keep verbatim during compaction |
+| `telegram_bot_token` | Yes | -- | Telegram bot token from BotFather |
+| `api_key` | Yes | -- | LLM API key |
+| `bot_username` | Yes | -- | Bot username (without @) |
+| `llm_provider` | No | `anthropic` | Provider preset ID (or custom ID). `anthropic` uses native Anthropic API, others use OpenAI-compatible API |
+| `model` | No | provider-specific | Model name |
+| `llm_base_url` | No | provider preset default | Custom provider base URL |
+| `data_dir` | No | `./microclaw.data` | Data root (`runtime` data in `data_dir/runtime`, skills in `data_dir/skills`) |
+| `max_tokens` | No | `8192` | Max tokens per model response |
+| `max_tool_iterations` | No | `25` | Max tool-use loop iterations per message |
+| `max_history_messages` | No | `50` | Number of recent messages sent as context |
+| `max_session_messages` | No | `40` | Message count threshold that triggers context compaction |
+| `compact_keep_recent` | No | `20` | Number of recent messages to keep verbatim during compaction |
+
+### Supported `llm_provider` values
+
+`openai`, `openrouter`, `anthropic`, `google`, `alibaba`, `deepseek`, `moonshot`, `mistral`, `azure`, `bedrock`, `zhipu`, `minimax`, `cohere`, `tencent`, `xai`, `huggingface`, `together`, `custom`.
 
 ## Group chats
 

@@ -66,7 +66,7 @@ SETUP:
 CONFIG FILE (microclaw.config.yaml):
     MicroClaw reads configuration from microclaw.config.yaml (or microclaw.config.yml).
     Override the path with MICROCLAW_CONFIG env var.
-    See config.example.yaml for all available fields.
+    See microclaw.config.example.yaml for all available fields.
 
     Core fields:
       telegram_bot_token     Telegram bot token from @BotFather

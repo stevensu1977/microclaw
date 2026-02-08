@@ -51,7 +51,7 @@ Telegram 消息
 - **会话恢复** -- 完整对话状态（包括工具交互）持久化保存；Claude 跨调用记住工具调用
 - **上下文压缩** -- 会话过长时自动总结旧消息，保持在上下文限制内
 - **子代理** -- 将独立子任务委派给有限制工具集的并行代理
-- **技能系统** -- 可扩展的技能系统（兼容 [Anthropic Skills](https://github.com/anthropics/skills) 标准）；技能从 `data/skills/` 自动发现，按需激活
+- **技能系统** -- 可扩展的技能系统（兼容 [Anthropic Skills](https://github.com/anthropics/skills) 标准）；技能从 `microclaw.data/skills/` 自动发现，按需激活
 - **计划与执行** -- todo 工具，将复杂任务拆解为步骤，逐步跟踪进度
 - **网页搜索** -- 通过 DuckDuckGo 搜索和抓取网页
 - **定时任务** -- 基于 cron 的循环任务和一次性定时任务，通过自然语言管理
@@ -93,7 +93,7 @@ Telegram 消息
 MicroClaw 通过 `CLAUDE.md` 文件维护持久化记忆，灵感来自 Claude Code 的项目记忆：
 
 ```
-data/runtime/groups/
+microclaw.data/runtime/groups/
     CLAUDE.md                 # 全局记忆（所有聊天共享）
     {chat_id}/
         CLAUDE.md             # 每聊天记忆
@@ -106,7 +106,7 @@ data/runtime/groups/
 MicroClaw 支持 [Anthropic Agent Skills](https://github.com/anthropics/skills) 标准。技能是为特定任务提供专业能力的模块化包。
 
 ```
-data/skills/
+microclaw.data/skills/
     pdf/
         SKILL.md              # 必需：name、description + 指令
     docx/
@@ -120,7 +120,7 @@ data/skills/
 
 **内置技能：** pdf、docx、xlsx、pptx、skill-creator
 
-**添加技能：** 在 `data/skills/` 下创建子目录，放入包含 YAML frontmatter（`name` 和 `description`）和 markdown 指令的 `SKILL.md` 文件。
+**添加技能：** 在 `microclaw.data/skills/` 下创建子目录，放入包含 YAML frontmatter（`name` 和 `description`）和 markdown 指令的 `SKILL.md` 文件。
 
 **命令：**
 - `/skills` -- 列出所有可用技能
@@ -139,7 +139,7 @@ Bot: [创建 todo 计划，然后逐步执行，更新进度]
 4. [ ] 添加文档
 ```
 
-Todo 列表存储在 `data/runtime/groups/{chat_id}/TODO.json`，跨会话持久化。
+Todo 列表存储在 `microclaw.data/runtime/groups/{chat_id}/TODO.json`，跨会话持久化。
 
 ## 定时任务
 
@@ -242,7 +242,7 @@ microclaw setup
 - provider/model 可视化列表选择（`Enter` 打开列表，`↑/↓` 选择，`Enter` 确认）
 - 本地校验（必填项、时区、数据目录可写）
 - 在线校验（Telegram `getMe`、LLM API 连通性）
-- 安全写入 `.env`（自动备份 `.env.bak.<timestamp>`）
+- 安全写入 `microclaw.config.yaml`（自动备份）
 
 向导内置 provider 预设：
 - `openai`
@@ -258,27 +258,24 @@ microclaw setup
 - `zhipu`
 - `minimax`
 - `cohere`
-- `baidu`
 - `tencent`
-- `huawei`
 - `xai`
 - `huggingface`
 - `together`
-- `perplexity`
 - `custom`（手动填写 provider/model/base URL）
 
-如果你更喜欢手工配置，也可以直接写 `.env`：
+如果你更喜欢手工配置，也可以直接写 `microclaw.config.yaml`：
 
 ```
-TELEGRAM_BOT_TOKEN=123456:ABC-DEF1234...
-BOT_USERNAME=my_bot
-LLM_PROVIDER=anthropic
-LLM_API_KEY=sk-ant-...
-LLM_MODEL=claude-sonnet-4-20250514
+telegram_bot_token: "123456:ABC-DEF1234..."
+bot_username: "my_bot"
+llm_provider: "anthropic"
+api_key: "sk-ant-..."
+model: "claude-sonnet-4-20250514"
 # 可选
-LLM_BASE_URL=
-DATA_DIR=./microclaw.data
-TIMEZONE=UTC
+# llm_base_url: "https://..."
+data_dir: "./microclaw.data"
+timezone: "UTC"
 ```
 
 ### 4. 运行
@@ -287,22 +284,28 @@ TIMEZONE=UTC
 microclaw start
 ```
 
-## 环境变量
+## 配置项
 
-| 变量 | 必需 | 默认值 | 描述 |
+所有配置都在 `microclaw.config.yaml` 中。
+
+| 配置键 | 必需 | 默认值 | 描述 |
 |------|------|--------|------|
-| `TELEGRAM_BOT_TOKEN` | 是 | -- | BotFather 的 Telegram bot token |
-| `LLM_API_KEY` | 是 | -- | LLM API key（兼容 `ANTHROPIC_API_KEY`） |
-| `BOT_USERNAME` | 是 | -- | Bot 用户名（不带 @） |
-| `LLM_PROVIDER` | 否 | `anthropic` | 提供方预设 ID（或自定义 ID）。`anthropic` 走原生 Anthropic API，其他走 OpenAI 兼容 API |
-| `LLM_MODEL` | 否 | 随 provider 默认 | 模型名（仍兼容 `CLAUDE_MODEL`） |
-| `LLM_BASE_URL` | 否 | provider 预设默认值 | 自定义 API 基础地址 |
-| `DATA_DIR` | 否 | `./microclaw.data` | 数据根目录（运行时数据在 `DATA_DIR/runtime`，技能在 `DATA_DIR/skills`） |
-| `MAX_TOKENS` | 否 | `8192` | 每次 Claude 回复的最大 token |
-| `MAX_TOOL_ITERATIONS` | 否 | `25` | 每条消息的最大工具循环次数 |
-| `MAX_HISTORY_MESSAGES` | 否 | `50` | 作为上下文发送的历史消息数 |
-| `MAX_SESSION_MESSAGES` | 否 | `40` | 触发上下文压缩的消息数阈值 |
-| `COMPACT_KEEP_RECENT` | 否 | `20` | 压缩时保留的最近消息数 |
+| `telegram_bot_token` | 是 | -- | BotFather 的 Telegram bot token |
+| `api_key` | 是 | -- | LLM API key |
+| `bot_username` | 是 | -- | Bot 用户名（不带 @） |
+| `llm_provider` | 否 | `anthropic` | 提供方预设 ID（或自定义 ID）。`anthropic` 走原生 Anthropic API，其他走 OpenAI 兼容 API |
+| `model` | 否 | 随 provider 默认 | 模型名 |
+| `llm_base_url` | 否 | provider 预设默认值 | 自定义 API 基础地址 |
+| `data_dir` | 否 | `./microclaw.data` | 数据根目录（运行时数据在 `data_dir/runtime`，技能在 `data_dir/skills`） |
+| `max_tokens` | 否 | `8192` | 每次 Claude 回复的最大 token |
+| `max_tool_iterations` | 否 | `25` | 每条消息的最大工具循环次数 |
+| `max_history_messages` | 否 | `50` | 作为上下文发送的历史消息数 |
+| `max_session_messages` | 否 | `40` | 触发上下文压缩的消息数阈值 |
+| `compact_keep_recent` | 否 | `20` | 压缩时保留的最近消息数 |
+
+### 支持的 `llm_provider` 值
+
+`openai`、`openrouter`、`anthropic`、`google`、`alibaba`、`deepseek`、`moonshot`、`mistral`、`azure`、`bedrock`、`zhipu`、`minimax`、`cohere`、`tencent`、`xai`、`huggingface`、`together`、`custom`。
 
 ## 群聊
 

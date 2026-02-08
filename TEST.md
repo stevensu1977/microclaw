@@ -4,7 +4,7 @@ This document describes how to manually test every feature of MicroClaw. Since M
 
 ## Prerequisites
 
-1. A working `.env` file with valid credentials
+1. A working `microclaw.config.yaml` file with valid credentials
 2. `cargo build` succeeds with zero errors
 3. Bot is running: `cargo run -- start`
 4. A Telegram account to send messages
@@ -124,7 +124,7 @@ You: What is my favorite language?
 
 **Expected:** The bot saves to CLAUDE.md and recalls "Rust" from memory in the second message.
 
-**Verify:** Check that `data/groups/{chat_id}/CLAUDE.md` exists and contains the memory.
+**Verify:** Check that `microclaw.data/runtime/groups/{chat_id}/CLAUDE.md` exists and contains the memory.
 
 ---
 
@@ -374,7 +374,7 @@ You: What did we just talk about?
 
 **Expected:** The bot continues to function normally even after many messages. Earlier conversation context is summarized rather than lost. You can verify by asking about something discussed early in the conversation.
 
-**Note:** Set `MAX_SESSION_MESSAGES=10` and `COMPACT_KEEP_RECENT=5` in `.env` for easier testing.
+**Note:** Set `max_session_messages: 10` and `compact_keep_recent: 5` in `microclaw.config.yaml` for easier testing.
 
 ---
 
@@ -419,7 +419,7 @@ You: Find all TODO comments in this project's source code, then create a summary
 After running tests, you can verify the database directly:
 
 ```sh
-sqlite3 data/microclaw.db
+sqlite3 microclaw.data/runtime/microclaw.db
 
 -- Check messages are stored
 SELECT COUNT(*) FROM messages;
@@ -445,5 +445,5 @@ After testing:
 rm -f /tmp/microclaw_test.txt /tmp/todos.txt
 
 # Cancel any remaining scheduled tasks via the bot, or:
-sqlite3 data/microclaw.db "UPDATE scheduled_tasks SET status='cancelled' WHERE status='active';"
+sqlite3 microclaw.data/runtime/microclaw.db "UPDATE scheduled_tasks SET status='cancelled' WHERE status='active';"
 ```

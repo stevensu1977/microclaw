@@ -21,7 +21,7 @@ All of that happens in a single message exchange. You send one message, you get 
 
 ## Why Rust?
 
-The original nanoclaw is TypeScript. It works. But I wanted something I could deploy as a single static binary with no runtime dependencies. `cargo build --release` gives you one file. Copy it to a server, set three environment variables, and it runs.
+The original nanoclaw is TypeScript. It works. But I wanted something I could deploy as a single static binary with no runtime dependencies. `cargo build --release` gives you one file. Copy it to a server, create a config file, and it runs.
 
 Rust also turned out to be a surprisingly good fit for this kind of project:
 
@@ -135,8 +135,8 @@ Tell it "remember that I'm working on project Atlas and the deploy target is sta
 
 The memory system has two scopes:
 
-- **Global memory** (`data/groups/CLAUDE.md`) -- things that matter across all conversations. Your name, preferences, common projects.
-- **Chat memory** (`data/groups/{chat_id}/CLAUDE.md`) -- things specific to one conversation. Project context, ongoing tasks, decisions made.
+- **Global memory** (`microclaw.data/runtime/groups/CLAUDE.md`) -- things that matter across all conversations. Your name, preferences, common projects.
+- **Chat memory** (`microclaw.data/runtime/groups/{chat_id}/CLAUDE.md`) -- things specific to one conversation. Project context, ongoing tasks, decisions made.
 
 Claude manages its own memory. You don't manually edit these files (though you can). You just talk to it naturally: "remember this", "forget about that", "what do you know about my setup?" It reads and writes the memory files through the same tool system it uses for everything else.
 
@@ -228,13 +228,13 @@ Getting started takes about two minutes:
 ```sh
 git clone https://github.com/user/microclaw
 cd microclaw
-cp .env.example .env
+cp microclaw.config.example.yaml microclaw.config.yaml
 ```
 
-Edit `.env` with three required values:
-- `TELEGRAM_BOT_TOKEN` -- get one from [@BotFather](https://t.me/BotFather)
-- `ANTHROPIC_API_KEY` -- from [console.anthropic.com](https://console.anthropic.com/)
-- `BOT_USERNAME` -- your bot's username (without the @)
+Edit `microclaw.config.yaml` with three required values:
+- `telegram_bot_token` -- get one from [@BotFather](https://t.me/BotFather)
+- `api_key` -- from your LLM provider (for example [console.anthropic.com](https://console.anthropic.com/))
+- `bot_username` -- your bot's username (without the @)
 
 Then:
 
@@ -249,17 +249,17 @@ cargo build --release
 ./target/release/microclaw start
 ```
 
-The binary is self-contained. No database server to install (SQLite is bundled), no external dependencies to configure. It creates its `data/` directory on first run, starts the scheduler automatically, and begins listening for messages.
+The binary is self-contained. No database server to install (SQLite is bundled), no external dependencies to configure. It creates its `microclaw.data/` directory on first run, starts the scheduler automatically, and begins listening for messages.
 
-Optional configuration (via environment variables):
+Optional configuration (in `microclaw.config.yaml`):
 
 | Variable | Default | What it does |
 |----------|---------|--------------|
-| `CLAUDE_MODEL` | `claude-sonnet-4-20250514` | Which Claude model to use |
-| `DATA_DIR` | `./data` | Where to store the database and memory files |
-| `MAX_TOKENS` | `8192` | Max tokens per Claude response |
-| `MAX_TOOL_ITERATIONS` | `25` | Safety cap on tool loops per message |
-| `MAX_HISTORY_MESSAGES` | `50` | How many messages to include as context |
+| `model` | `claude-sonnet-4-20250514` | Which model to use |
+| `data_dir` | `./microclaw.data` | Where to store runtime data and skills |
+| `max_tokens` | `8192` | Max tokens per model response |
+| `max_tool_iterations` | `25` | Safety cap on tool loops per message |
+| `max_history_messages` | `50` | How many messages to include as context |
 
 ## What's different from the original nanoclaw
 

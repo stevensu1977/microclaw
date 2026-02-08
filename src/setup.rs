@@ -131,26 +131,11 @@ const PROVIDER_PRESETS: &[ProviderPreset] = &[
         models: &["command-r-plus-08-2024", "command-r7b-12-2024"],
     },
     ProviderPreset {
-        id: "baidu",
-        label: "Baidu AI",
-        protocol: ProviderProtocol::OpenAiCompat,
-        default_base_url: "https://qianfan.baidubce.com/v2",
-        models: &["ernie-4.0-8k", "ernie-3.5-8k"],
-    },
-    ProviderPreset {
         id: "tencent",
         label: "Tencent AI Lab",
         protocol: ProviderProtocol::OpenAiCompat,
         default_base_url: "https://api.hunyuan.cloud.tencent.com/v1",
         models: &["hunyuan-turbos-latest", "hunyuan-large"],
-    },
-    ProviderPreset {
-        id: "huawei",
-        label: "Huawei Cloud (Pangu)",
-        protocol: ProviderProtocol::OpenAiCompat,
-        default_base_url:
-            "https://infer-modelarts-cn-southwest-2.modelarts-infer.com/v1/infers/YOUR-INFER-ID",
-        models: &["pangu-pro", "pangu-ultra"],
     },
     ProviderPreset {
         id: "xai",
@@ -178,13 +163,6 @@ const PROVIDER_PRESETS: &[ProviderPreset] = &[
             "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
             "deepseek-ai/DeepSeek-V3",
         ],
-    },
-    ProviderPreset {
-        id: "perplexity",
-        label: "Perplexity AI",
-        protocol: ProviderProtocol::OpenAiCompat,
-        default_base_url: "https://api.perplexity.ai",
-        models: &["sonar-pro", "sonar-reasoning-pro"],
     },
     ProviderPreset {
         id: "custom",
@@ -750,7 +728,7 @@ fn perform_online_validation(
     let protocol = provider_protocol(provider);
     let should_skip_models_check = matches!(
         provider,
-        "azure" | "bedrock" | "huawei" | "baidu" | "tencent"
+        "azure" | "bedrock" | "tencent"
     );
 
     if should_skip_models_check {

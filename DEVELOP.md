@@ -5,8 +5,8 @@
 ```sh
 git clone <repo-url>
 cd microclaw
-cp .env.example .env
-# Edit .env with your credentials
+cp microclaw.config.example.yaml microclaw.config.yaml
+# Edit microclaw.config.yaml with your credentials
 cargo run -- start
 ```
 
@@ -23,7 +23,7 @@ No other external dependencies. SQLite is bundled via `rusqlite`.
 ```
 src/
     main.rs              # Entry point. Parses CLI args, initializes subsystems, starts bot.
-    config.rs            # Config struct. All settings loaded from env vars / .env file.
+    config.rs            # Config struct. All settings loaded from microclaw.config.yaml.
     error.rs             # MicroClawError enum (thiserror). Centralized error types.
     telegram.rs          # Core orchestration:
                          #   - Telegram message handler
@@ -280,7 +280,7 @@ RUST_LOG=debug cargo run -- start
 RUST_LOG=microclaw=debug cargo run -- start
 
 # Check database directly
-sqlite3 data/microclaw.db
+sqlite3 microclaw.data/runtime/microclaw.db
 sqlite> SELECT * FROM messages ORDER BY timestamp DESC LIMIT 10;
 sqlite> SELECT * FROM scheduled_tasks;
 sqlite> SELECT * FROM chats;
@@ -290,15 +290,15 @@ sqlite> SELECT * FROM chats;
 
 | Task | How |
 |------|-----|
-| Change the Claude model | Set `CLAUDE_MODEL=claude-sonnet-4-20250514` in `.env` |
+| Change the model | Set `model: "claude-sonnet-4-20250514"` in `microclaw.config.yaml` |
 | Increase context window | Set `MAX_HISTORY_MESSAGES=100` (uses more tokens) |
 | Increase tool iterations | Set `MAX_TOOL_ITERATIONS=50` |
-| Reset memory | Delete files under `data/groups/` |
-| Reset all data | Delete the `data/` directory |
+| Reset memory | Delete files under `microclaw.data/runtime/groups/` |
+| Reset all data | Delete the `microclaw.data/` directory |
 | Tune compaction threshold | Set `MAX_SESSION_MESSAGES=60` (higher = more context before compaction) |
 | Keep more recent messages | Set `COMPACT_KEEP_RECENT=30` (more recent messages kept verbatim) |
-| Reset a chat session | Send `/reset` in the chat, or: `sqlite3 data/microclaw.db "DELETE FROM sessions WHERE chat_id=XXXX;"` |
-| Cancel all scheduled tasks | `sqlite3 data/microclaw.db "UPDATE scheduled_tasks SET status='cancelled' WHERE status='active';"` |
+| Reset a chat session | Send `/reset` in the chat, or: `sqlite3 microclaw.data/runtime/microclaw.db "DELETE FROM sessions WHERE chat_id=XXXX;"` |
+| Cancel all scheduled tasks | `sqlite3 microclaw.data/runtime/microclaw.db "UPDATE scheduled_tasks SET status='cancelled' WHERE status='active';"` |
 
 ## Build
 
@@ -309,7 +309,7 @@ cargo run -- start       # Run dev build
 cargo run -- help        # Show CLI help
 ```
 
-The release binary is fully self-contained -- no runtime dependencies, no database server, no config files beyond `.env`.
+The release binary is fully self-contained -- no runtime dependencies, no database server, no config files beyond `microclaw.config.yaml`.
 
 ## Dependencies
 
@@ -330,4 +330,3 @@ The release binary is fully self-contained -- no runtime dependencies, no databa
 | thiserror | 2 | Error derive macro |
 | anyhow | 1 | Error propagation |
 | tracing | 0.1 | Logging |
-| dotenvy | 0.15 | .env file loading |
