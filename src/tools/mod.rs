@@ -18,6 +18,7 @@ pub mod web_search;
 pub mod write_file;
 
 use std::sync::Arc;
+use std::{path::Path, path::PathBuf};
 
 use async_trait::async_trait;
 use serde_json::json;
@@ -118,17 +119,34 @@ pub struct ToolRegistry {
     tools: Vec<Box<dyn Tool>>,
 }
 
+pub fn resolve_tool_path(working_dir: &Path, path: &str) -> PathBuf {
+    let candidate = PathBuf::from(path);
+    if candidate.is_absolute() {
+        candidate
+    } else {
+        working_dir.join(candidate)
+    }
+}
+
 impl ToolRegistry {
     pub fn new(config: &Config, bot: Bot, db: Arc<Database>) -> Self {
+        let working_dir = PathBuf::from(&config.working_dir);
+        if let Err(e) = std::fs::create_dir_all(&working_dir) {
+            tracing::warn!(
+                "Failed to create working_dir '{}': {}",
+                working_dir.display(),
+                e
+            );
+        }
         let skills_data_dir = config.skills_data_dir();
         let tools: Vec<Box<dyn Tool>> = vec![
-            Box::new(bash::BashTool),
+            Box::new(bash::BashTool::new(&config.working_dir)),
             Box::new(browser::BrowserTool::new(&config.data_dir)),
-            Box::new(read_file::ReadFileTool),
-            Box::new(write_file::WriteFileTool),
-            Box::new(edit_file::EditFileTool),
-            Box::new(glob::GlobTool),
-            Box::new(grep::GrepTool),
+            Box::new(read_file::ReadFileTool::new(&config.working_dir)),
+            Box::new(write_file::WriteFileTool::new(&config.working_dir)),
+            Box::new(edit_file::EditFileTool::new(&config.working_dir)),
+            Box::new(glob::GlobTool::new(&config.working_dir)),
+            Box::new(grep::GrepTool::new(&config.working_dir)),
             Box::new(memory::ReadMemoryTool::new(&config.data_dir)),
             Box::new(memory::WriteMemoryTool::new(&config.data_dir)),
             Box::new(web_fetch::WebFetchTool),
@@ -154,15 +172,23 @@ impl ToolRegistry {
 
     /// Create a restricted tool registry for sub-agents (no side-effect or recursive tools).
     pub fn new_sub_agent(config: &Config) -> Self {
+        let working_dir = PathBuf::from(&config.working_dir);
+        if let Err(e) = std::fs::create_dir_all(&working_dir) {
+            tracing::warn!(
+                "Failed to create working_dir '{}': {}",
+                working_dir.display(),
+                e
+            );
+        }
         let skills_data_dir = config.skills_data_dir();
         let tools: Vec<Box<dyn Tool>> = vec![
-            Box::new(bash::BashTool),
+            Box::new(bash::BashTool::new(&config.working_dir)),
             Box::new(browser::BrowserTool::new(&config.data_dir)),
-            Box::new(read_file::ReadFileTool),
-            Box::new(write_file::WriteFileTool),
-            Box::new(edit_file::EditFileTool),
-            Box::new(glob::GlobTool),
-            Box::new(grep::GrepTool),
+            Box::new(read_file::ReadFileTool::new(&config.working_dir)),
+            Box::new(write_file::WriteFileTool::new(&config.working_dir)),
+            Box::new(edit_file::EditFileTool::new(&config.working_dir)),
+            Box::new(glob::GlobTool::new(&config.working_dir)),
+            Box::new(grep::GrepTool::new(&config.working_dir)),
             Box::new(memory::ReadMemoryTool::new(&config.data_dir)),
             Box::new(web_fetch::WebFetchTool),
             Box::new(web_search::WebSearchTool),

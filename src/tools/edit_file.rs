@@ -1,12 +1,23 @@
 use async_trait::async_trait;
 use serde_json::json;
+use std::path::PathBuf;
 use tracing::info;
 
 use crate::claude::ToolDefinition;
 
 use super::{schema_object, Tool, ToolResult};
 
-pub struct EditFileTool;
+pub struct EditFileTool {
+    working_dir: PathBuf,
+}
+
+impl EditFileTool {
+    pub fn new(working_dir: &str) -> Self {
+        Self {
+            working_dir: PathBuf::from(working_dir),
+        }
+    }
+}
 
 #[async_trait]
 impl Tool for EditFileTool {
@@ -43,8 +54,10 @@ impl Tool for EditFileTool {
             Some(p) => p,
             None => return ToolResult::error("Missing 'path' parameter".into()),
         };
+        let resolved_path = super::resolve_tool_path(&self.working_dir, path);
+        let resolved_path_str = resolved_path.to_string_lossy().to_string();
 
-        if let Err(msg) = crate::tools::path_guard::check_path(path) {
+        if let Err(msg) = crate::tools::path_guard::check_path(&resolved_path_str) {
             return ToolResult::error(msg);
         }
 
@@ -57,9 +70,9 @@ impl Tool for EditFileTool {
             None => return ToolResult::error("Missing 'new_string' parameter".into()),
         };
 
-        info!("Editing file: {}", path);
+        info!("Editing file: {}", resolved_path.display());
 
-        let content = match tokio::fs::read_to_string(path).await {
+        let content = match tokio::fs::read_to_string(&resolved_path).await {
             Ok(c) => c,
             Err(e) => return ToolResult::error(format!("Failed to read file: {e}")),
         };
@@ -77,8 +90,10 @@ impl Tool for EditFileTool {
         }
 
         let new_content = content.replacen(old_string, new_string, 1);
-        match tokio::fs::write(path, new_content).await {
-            Ok(()) => ToolResult::success(format!("Successfully edited {path}")),
+        match tokio::fs::write(&resolved_path, new_content).await {
+            Ok(()) => {
+                ToolResult::success(format!("Successfully edited {}", resolved_path.display()))
+            }
             Err(e) => ToolResult::error(format!("Failed to write file: {e}")),
         }
     }
@@ -100,7 +115,7 @@ mod tests {
     #[tokio::test]
     async fn test_edit_file_success() {
         let (dir, file) = setup_file("hello world");
-        let tool = EditFileTool;
+        let tool = EditFileTool::new(".");
         let result = tool
             .execute(json!({
                 "path": file.to_str().unwrap(),
@@ -115,7 +130,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_edit_file_not_found() {
-        let tool = EditFileTool;
+        let tool = EditFileTool::new(".");
         let result = tool
             .execute(json!({
                 "path": "/nonexistent/file.txt",
@@ -130,7 +145,7 @@ mod tests {
     #[tokio::test]
     async fn test_edit_file_old_string_not_found() {
         let (dir, file) = setup_file("hello world");
-        let tool = EditFileTool;
+        let tool = EditFileTool::new(".");
         let result = tool
             .execute(json!({
                 "path": file.to_str().unwrap(),
@@ -146,7 +161,7 @@ mod tests {
     #[tokio::test]
     async fn test_edit_file_multiple_matches() {
         let (dir, file) = setup_file("aaa bbb aaa");
-        let tool = EditFileTool;
+        let tool = EditFileTool::new(".");
         let result = tool
             .execute(json!({
                 "path": file.to_str().unwrap(),
@@ -161,7 +176,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_edit_file_missing_params() {
-        let tool = EditFileTool;
+        let tool = EditFileTool::new(".");
         let result = tool.execute(json!({})).await;
         assert!(result.is_error);
         assert!(result.content.contains("Missing 'path'"));
@@ -169,5 +184,27 @@ mod tests {
         let result = tool.execute(json!({"path": "/tmp/x"})).await;
         assert!(result.is_error);
         assert!(result.content.contains("Missing 'old_string'"));
+    }
+
+    #[tokio::test]
+    async fn test_edit_file_resolves_relative_to_working_dir() {
+        let root = std::env::temp_dir().join(format!("microclaw_ef2_{}", uuid::Uuid::new_v4()));
+        let work = root.join("workspace");
+        std::fs::create_dir_all(&work).unwrap();
+        let file = work.join("edit_me.txt");
+        std::fs::write(&file, "aaa bbb").unwrap();
+
+        let tool = EditFileTool::new(work.to_str().unwrap());
+        let result = tool
+            .execute(json!({
+                "path": "edit_me.txt",
+                "old_string": "bbb",
+                "new_string": "ccc"
+            }))
+            .await;
+        assert!(!result.is_error);
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "aaa ccc");
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

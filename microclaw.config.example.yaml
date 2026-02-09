@@ -25,6 +25,9 @@ max_history_messages: 50
 # - runtime files go to <data_dir>/runtime
 # - built-in/custom skills are loaded from <data_dir>/skills
 data_dir: "./microclaw.data"
+# Default working directory for file/bash/search tools.
+# Relative paths used by tools are resolved from this directory.
+working_dir: "./tmp"
 # IANA timezone for scheduling (e.g. "US/Eastern", "Europe/London")
 timezone: "UTC"
 

@@ -1,12 +1,23 @@
 use async_trait::async_trait;
 use serde_json::json;
+use std::path::PathBuf;
 use tracing::info;
 
 use crate::claude::ToolDefinition;
 
 use super::{schema_object, Tool, ToolResult};
 
-pub struct WriteFileTool;
+pub struct WriteFileTool {
+    working_dir: PathBuf,
+}
+
+impl WriteFileTool {
+    pub fn new(working_dir: &str) -> Self {
+        Self {
+            working_dir: PathBuf::from(working_dir),
+        }
+    }
+}
 
 #[async_trait]
 impl Tool for WriteFileTool {
@@ -39,8 +50,10 @@ impl Tool for WriteFileTool {
             Some(p) => p,
             None => return ToolResult::error("Missing 'path' parameter".into()),
         };
+        let resolved_path = super::resolve_tool_path(&self.working_dir, path);
+        let resolved_path_str = resolved_path.to_string_lossy().to_string();
 
-        if let Err(msg) = crate::tools::path_guard::check_path(path) {
+        if let Err(msg) = crate::tools::path_guard::check_path(&resolved_path_str) {
             return ToolResult::error(msg);
         }
 
@@ -49,16 +62,18 @@ impl Tool for WriteFileTool {
             None => return ToolResult::error("Missing 'content' parameter".into()),
         };
 
-        info!("Writing file: {}", path);
+        info!("Writing file: {}", resolved_path.display());
 
-        if let Some(parent) = std::path::Path::new(path).parent() {
+        if let Some(parent) = resolved_path.parent() {
             if let Err(e) = tokio::fs::create_dir_all(parent).await {
                 return ToolResult::error(format!("Failed to create directories: {e}"));
             }
         }
 
-        match tokio::fs::write(path, content).await {
-            Ok(()) => ToolResult::success(format!("Successfully wrote to {path}")),
+        match tokio::fs::write(&resolved_path, content).await {
+            Ok(()) => {
+                ToolResult::success(format!("Successfully wrote to {}", resolved_path.display()))
+            }
             Err(e) => ToolResult::error(format!("Failed to write file: {e}")),
         }
     }
@@ -75,7 +90,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("out.txt");
 
-        let tool = WriteFileTool;
+        let tool = WriteFileTool::new(".");
         let result = tool
             .execute(json!({"path": file.to_str().unwrap(), "content": "hello world"}))
             .await;
@@ -93,7 +108,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("microclaw_wf2_{}", uuid::Uuid::new_v4()));
         let file = dir.join("sub").join("dir").join("file.txt");
 
-        let tool = WriteFileTool;
+        let tool = WriteFileTool::new(".");
         let result = tool
             .execute(json!({"path": file.to_str().unwrap(), "content": "nested"}))
             .await;
@@ -105,7 +120,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_write_file_missing_params() {
-        let tool = WriteFileTool;
+        let tool = WriteFileTool::new(".");
 
         let result = tool.execute(json!({"content": "hello"})).await;
         assert!(result.is_error);
@@ -114,5 +129,24 @@ mod tests {
         let result = tool.execute(json!({"path": "/tmp/x"})).await;
         assert!(result.is_error);
         assert!(result.content.contains("Missing 'content'"));
+    }
+
+    #[tokio::test]
+    async fn test_write_file_resolves_relative_to_working_dir() {
+        let root = std::env::temp_dir().join(format!("microclaw_wf3_{}", uuid::Uuid::new_v4()));
+        let work = root.join("workspace");
+        std::fs::create_dir_all(&work).unwrap();
+
+        let tool = WriteFileTool::new(work.to_str().unwrap());
+        let result = tool
+            .execute(json!({"path": "nested/out.txt", "content": "ok"}))
+            .await;
+        assert!(!result.is_error);
+        assert_eq!(
+            std::fs::read_to_string(work.join("nested/out.txt")).unwrap(),
+            "ok"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

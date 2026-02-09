@@ -1,12 +1,23 @@
 use async_trait::async_trait;
 use serde_json::json;
+use std::path::{Path, PathBuf};
 use tracing::info;
 
 use crate::claude::ToolDefinition;
 
 use super::{schema_object, Tool, ToolResult};
 
-pub struct GrepTool;
+pub struct GrepTool {
+    working_dir: PathBuf,
+}
+
+impl GrepTool {
+    pub fn new(working_dir: &str) -> Self {
+        Self {
+            working_dir: PathBuf::from(working_dir),
+        }
+    }
+}
 
 #[async_trait]
 impl Tool for GrepTool {
@@ -44,9 +55,14 @@ impl Tool for GrepTool {
             None => return ToolResult::error("Missing 'pattern' parameter".into()),
         };
         let path = input.get("path").and_then(|v| v.as_str()).unwrap_or(".");
+        let resolved_path = super::resolve_tool_path(&self.working_dir, path);
+        let resolved_path_str = resolved_path.to_string_lossy().to_string();
+        if let Err(msg) = crate::tools::path_guard::check_path(&resolved_path_str) {
+            return ToolResult::error(msg);
+        }
         let file_glob = input.get("glob").and_then(|v| v.as_str());
 
-        info!("Grep: {} in {}", pattern, path);
+        info!("Grep: {} in {}", pattern, resolved_path.display());
 
         let re = match regex::Regex::new(pattern) {
             Ok(r) => r,
@@ -56,7 +72,13 @@ impl Tool for GrepTool {
         let mut results = Vec::new();
         let mut file_count = 0;
 
-        if let Err(e) = grep_recursive(path, file_glob, &re, &mut results, &mut file_count) {
+        if let Err(e) = grep_recursive(
+            &resolved_path,
+            file_glob,
+            &re,
+            &mut results,
+            &mut file_count,
+        ) {
             return ToolResult::error(format!("Search error: {e}"));
         }
 
@@ -73,7 +95,7 @@ impl Tool for GrepTool {
 }
 
 fn grep_recursive(
-    path: &str,
+    path: &Path,
     file_glob: Option<&str>,
     re: &regex::Regex,
     results: &mut Vec<String>,
@@ -97,13 +119,7 @@ fn grep_recursive(
             }
 
             if entry_path.is_dir() {
-                grep_recursive(
-                    &entry_path.display().to_string(),
-                    file_glob,
-                    re,
-                    results,
-                    file_count,
-                )?;
+                grep_recursive(&entry_path, file_glob, re, results, file_count)?;
             } else if entry_path.is_file() {
                 if crate::tools::path_guard::is_blocked(&entry_path) {
                     continue;
@@ -117,14 +133,14 @@ fn grep_recursive(
                 if *file_count > 10000 {
                     return Ok(());
                 }
-                grep_file(&entry_path.display().to_string(), re, results)?;
+                grep_file(&entry_path, re, results)?;
             }
         }
     }
     Ok(())
 }
 
-fn grep_file(path: &str, re: &regex::Regex, results: &mut Vec<String>) -> std::io::Result<()> {
+fn grep_file(path: &Path, re: &regex::Regex, results: &mut Vec<String>) -> std::io::Result<()> {
     let content = match std::fs::read_to_string(path) {
         Ok(c) => c,
         Err(_) => return Ok(()), // Skip binary / unreadable files
@@ -132,7 +148,7 @@ fn grep_file(path: &str, re: &regex::Regex, results: &mut Vec<String>) -> std::i
 
     for (line_num, line) in content.lines().enumerate() {
         if re.is_match(line) {
-            results.push(format!("{}:{}: {}", path, line_num + 1, line));
+            results.push(format!("{}:{}: {}", path.display(), line_num + 1, line));
             if results.len() >= 500 {
                 return Ok(());
             }
@@ -161,7 +177,7 @@ mod tests {
     #[tokio::test]
     async fn test_grep_finds_matches() {
         let dir = setup_grep_dir();
-        let tool = GrepTool;
+        let tool = GrepTool::new(".");
         let result = tool
             .execute(json!({"pattern": "hello", "path": dir.to_str().unwrap()}))
             .await;
@@ -175,7 +191,7 @@ mod tests {
     #[tokio::test]
     async fn test_grep_no_matches() {
         let dir = setup_grep_dir();
-        let tool = GrepTool;
+        let tool = GrepTool::new(".");
         let result = tool
             .execute(json!({"pattern": "zzzzzzz", "path": dir.to_str().unwrap()}))
             .await;
@@ -187,7 +203,7 @@ mod tests {
     #[tokio::test]
     async fn test_grep_with_file_glob() {
         let dir = setup_grep_dir();
-        let tool = GrepTool;
+        let tool = GrepTool::new(".");
         // Only search .txt files
         let result = tool
             .execute(json!({
@@ -205,7 +221,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_grep_invalid_regex() {
-        let tool = GrepTool;
+        let tool = GrepTool::new(".");
         let result = tool
             .execute(json!({"pattern": "[invalid", "path": "."}))
             .await;
@@ -215,7 +231,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_grep_missing_pattern() {
-        let tool = GrepTool;
+        let tool = GrepTool::new(".");
         let result = tool.execute(json!({})).await;
         assert!(result.is_error);
         assert!(result.content.contains("Missing 'pattern'"));
@@ -230,7 +246,7 @@ mod tests {
 
         let re = regex::Regex::new("foo").unwrap();
         let mut results = Vec::new();
-        grep_file(file.to_str().unwrap(), &re, &mut results).unwrap();
+        grep_file(&file, &re, &mut results).unwrap();
         assert_eq!(results.len(), 2);
         assert!(results[0].contains(":1:"));
         assert!(results[1].contains(":3:"));
@@ -248,12 +264,27 @@ mod tests {
         let re = regex::Regex::new("match_me").unwrap();
         let mut results = Vec::new();
         let mut count = 0;
-        grep_recursive(dir.to_str().unwrap(), None, &re, &mut results, &mut count).unwrap();
+        grep_recursive(&dir, None, &re, &mut results, &mut count).unwrap();
 
         // Should only find in visible.txt
         assert_eq!(results.len(), 1);
         assert!(results[0].contains("visible.txt"));
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn test_grep_defaults_to_working_dir() {
+        let root = std::env::temp_dir().join(format!("microclaw_grep2_{}", uuid::Uuid::new_v4()));
+        let work = root.join("workspace");
+        std::fs::create_dir_all(&work).unwrap();
+        std::fs::write(work.join("a.txt"), "needle").unwrap();
+
+        let tool = GrepTool::new(work.to_str().unwrap());
+        let result = tool.execute(json!({"pattern":"needle"})).await;
+        assert!(!result.is_error);
+        assert!(result.content.contains("a.txt"));
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

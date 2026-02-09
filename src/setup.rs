@@ -319,6 +319,16 @@ impl SetupApp {
                     required: false,
                     secret: false,
                 },
+                Field {
+                    key: "WORKING_DIR",
+                    label: "Default working directory",
+                    value: existing
+                        .get("WORKING_DIR")
+                        .cloned()
+                        .unwrap_or_else(|| "./tmp".into()),
+                    required: false,
+                    secret: false,
+                },
             ],
             selected: 0,
             editing: false,
@@ -358,6 +368,7 @@ impl SetupApp {
                     }
                     map.insert("DATA_DIR".into(), config.data_dir);
                     map.insert("TIMEZONE".into(), config.timezone);
+                    map.insert("WORKING_DIR".into(), config.working_dir);
                     return map;
                 }
             }
@@ -442,6 +453,14 @@ impl SetupApp {
         let probe = Path::new(&dir).join(".setup_probe");
         fs::write(&probe, "ok")?;
         let _ = fs::remove_file(probe);
+
+        let working_dir = self.field_value("WORKING_DIR");
+        let workdir = if working_dir.is_empty() {
+            "./tmp".to_string()
+        } else {
+            working_dir
+        };
+        fs::create_dir_all(&workdir)?;
 
         Ok(())
     }
@@ -657,6 +676,7 @@ impl SetupApp {
                 .unwrap_or_default(),
             "DATA_DIR" => "./microclaw.data".into(),
             "TIMEZONE" => "UTC".into(),
+            "WORKING_DIR" => "./tmp".into(),
             _ => String::new(),
         }
     }
@@ -682,7 +702,7 @@ impl SetupApp {
         match self.selected {
             0..=1 => "Telegram",
             2..=5 => "LLM",
-            6..=7 => "Runtime",
+            6..=8 => "Runtime",
             _ => "Setup",
         }
     }
@@ -893,6 +913,11 @@ fn save_config_yaml(
         .cloned()
         .unwrap_or_else(|| "UTC".into());
     yaml.push_str(&format!("timezone: \"{}\"\n", tz));
+    let working_dir = values
+        .get("WORKING_DIR")
+        .cloned()
+        .unwrap_or_else(|| "./tmp".into());
+    yaml.push_str(&format!("working_dir: \"{}\"\n", working_dir));
 
     fs::write(path, yaml)?;
     Ok(backup)

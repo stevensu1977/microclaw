@@ -1,12 +1,23 @@
 use async_trait::async_trait;
 use serde_json::json;
+use std::path::PathBuf;
 use tracing::info;
 
 use crate::claude::ToolDefinition;
 
 use super::{schema_object, Tool, ToolResult};
 
-pub struct GlobTool;
+pub struct GlobTool {
+    working_dir: PathBuf,
+}
+
+impl GlobTool {
+    pub fn new(working_dir: &str) -> Self {
+        Self {
+            working_dir: PathBuf::from(working_dir),
+        }
+    }
+}
 
 #[async_trait]
 impl Tool for GlobTool {
@@ -40,13 +51,19 @@ impl Tool for GlobTool {
             None => return ToolResult::error("Missing 'pattern' parameter".into()),
         };
         let base = input.get("path").and_then(|v| v.as_str()).unwrap_or(".");
+        let resolved_base = super::resolve_tool_path(&self.working_dir, base);
+        let resolved_base_str = resolved_base.to_string_lossy().to_string();
 
-        info!("Glob: {} in {}", pattern, base);
+        if let Err(msg) = crate::tools::path_guard::check_path(&resolved_base_str) {
+            return ToolResult::error(msg);
+        }
+
+        info!("Glob: {} in {}", pattern, resolved_base.display());
 
         let full_pattern = if pattern.starts_with('/') {
             pattern.to_string()
         } else {
-            format!("{base}/{pattern}")
+            format!("{}/{}", resolved_base.display(), pattern)
         };
 
         match glob::glob(&full_pattern) {
@@ -87,7 +104,7 @@ mod tests {
         std::fs::write(dir.join("b.txt"), "").unwrap();
         std::fs::write(dir.join("c.rs"), "").unwrap();
 
-        let tool = GlobTool;
+        let tool = GlobTool::new(".");
         let result = tool
             .execute(json!({"pattern": "*.txt", "path": dir.to_str().unwrap()}))
             .await;
@@ -104,7 +121,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("microclaw_glob2_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
 
-        let tool = GlobTool;
+        let tool = GlobTool::new(".");
         let result = tool
             .execute(json!({"pattern": "*.xyz", "path": dir.to_str().unwrap()}))
             .await;
@@ -116,9 +133,24 @@ mod tests {
 
     #[tokio::test]
     async fn test_glob_missing_pattern() {
-        let tool = GlobTool;
+        let tool = GlobTool::new(".");
         let result = tool.execute(json!({})).await;
         assert!(result.is_error);
         assert!(result.content.contains("Missing 'pattern'"));
+    }
+
+    #[tokio::test]
+    async fn test_glob_defaults_to_working_dir() {
+        let root = std::env::temp_dir().join(format!("microclaw_glob3_{}", uuid::Uuid::new_v4()));
+        let work = root.join("workspace");
+        std::fs::create_dir_all(&work).unwrap();
+        std::fs::write(work.join("x.txt"), "").unwrap();
+
+        let tool = GlobTool::new(work.to_str().unwrap());
+        let result = tool.execute(json!({"pattern":"*.txt"})).await;
+        assert!(!result.is_error);
+        assert!(result.content.contains("x.txt"));
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

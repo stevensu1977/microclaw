@@ -15,6 +15,7 @@ fn minimal_config() -> Config {
         max_tool_iterations: 25,
         max_history_messages: 50,
         data_dir: "./microclaw.data".into(),
+        working_dir: "./tmp".into(),
         openai_api_key: None,
         timezone: "UTC".into(),
         allowed_groups: vec![],
@@ -62,6 +63,7 @@ max_tokens: 4096
 max_tool_iterations: 10
 max_history_messages: 100
 data_dir: /data/microclaw
+working_dir: /data/microclaw/tmp
 openai_api_key: sk-whisper
 timezone: Asia/Shanghai
 allowed_groups:
@@ -92,6 +94,7 @@ discord_allowed_channels:
     assert_eq!(config.max_tool_iterations, 10);
     assert_eq!(config.max_history_messages, 100);
     assert_eq!(config.data_dir, "/data/microclaw");
+    assert_eq!(config.working_dir, "/data/microclaw/tmp");
     assert_eq!(config.openai_api_key.as_deref(), Some("sk-whisper"));
     assert_eq!(config.timezone, "Asia/Shanghai");
     assert_eq!(config.allowed_groups, vec![111, 222]);

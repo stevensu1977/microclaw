@@ -277,6 +277,7 @@ model: "claude-sonnet-4-20250514"
 # optional
 # llm_base_url: "https://..."
 data_dir: "./microclaw.data"
+working_dir: "./tmp"
 timezone: "UTC"
 ```
 
@@ -322,6 +323,7 @@ All configuration is via `microclaw.config.yaml`:
 | `model` | No | provider-specific | Model name |
 | `llm_base_url` | No | provider preset default | Custom provider base URL |
 | `data_dir` | No | `./microclaw.data` | Data root (`runtime` data in `data_dir/runtime`, skills in `data_dir/skills`) |
+| `working_dir` | No | `./tmp` | Default working directory for tool operations; relative paths in `bash/read_file/write_file/edit_file/glob/grep` resolve from here |
 | `max_tokens` | No | `8192` | Max tokens per model response |
 | `max_tool_iterations` | No | `100` | Max tool-use loop iterations per message |
 | `max_history_messages` | No | `50` | Number of recent messages sent as context |

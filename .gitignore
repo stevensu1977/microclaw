@@ -5,3 +5,4 @@ microclaw.data/*
 !microclaw.data/skills/
 !microclaw.data/skills/**
 website/
+tmp/

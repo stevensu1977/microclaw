@@ -1,12 +1,23 @@
 use async_trait::async_trait;
 use serde_json::json;
+use std::path::PathBuf;
 use tracing::info;
 
 use crate::claude::ToolDefinition;
 
 use super::{schema_object, Tool, ToolResult};
 
-pub struct BashTool;
+pub struct BashTool {
+    working_dir: PathBuf,
+}
+
+impl BashTool {
+    pub fn new(working_dir: &str) -> Self {
+        Self {
+            working_dir: PathBuf::from(working_dir),
+        }
+    }
+}
 
 #[async_trait]
 impl Tool for BashTool {
@@ -50,6 +61,7 @@ impl Tool for BashTool {
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(timeout_secs),
             tokio::process::Command::new("bash")
+                .current_dir(&self.working_dir)
                 .arg("-c")
                 .arg(command)
                 .output(),
@@ -102,7 +114,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_bash_echo() {
-        let tool = BashTool;
+        let tool = BashTool::new(".");
         let result = tool.execute(json!({"command": "echo hello"})).await;
         assert!(!result.is_error);
         assert!(result.content.contains("hello"));
@@ -110,7 +122,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_bash_exit_code_nonzero() {
-        let tool = BashTool;
+        let tool = BashTool::new(".");
         let result = tool.execute(json!({"command": "exit 1"})).await;
         assert!(result.is_error);
         assert!(result.content.contains("Exit code 1"));
@@ -118,7 +130,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_bash_stderr() {
-        let tool = BashTool;
+        let tool = BashTool::new(".");
         let result = tool.execute(json!({"command": "echo err >&2"})).await;
         assert!(!result.is_error); // exit code is 0
         assert!(result.content.contains("STDERR"));
@@ -127,7 +139,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_bash_timeout() {
-        let tool = BashTool;
+        let tool = BashTool::new(".");
         let result = tool
             .execute(json!({"command": "sleep 10", "timeout_secs": 1}))
             .await;
@@ -137,7 +149,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_bash_missing_command() {
-        let tool = BashTool;
+        let tool = BashTool::new(".");
         let result = tool.execute(json!({})).await;
         assert!(result.is_error);
         assert!(result.content.contains("Missing 'command'"));
@@ -145,11 +157,25 @@ mod tests {
 
     #[test]
     fn test_bash_tool_name_and_definition() {
-        let tool = BashTool;
+        let tool = BashTool::new(".");
         assert_eq!(tool.name(), "bash");
         let def = tool.definition();
         assert_eq!(def.name, "bash");
         assert!(!def.description.is_empty());
         assert!(def.input_schema["properties"]["command"].is_object());
+    }
+
+    #[tokio::test]
+    async fn test_bash_uses_working_dir() {
+        let root = std::env::temp_dir().join(format!("microclaw_bash_{}", uuid::Uuid::new_v4()));
+        let work = root.join("workspace");
+        std::fs::create_dir_all(&work).unwrap();
+
+        let tool = BashTool::new(work.to_str().unwrap());
+        let result = tool.execute(json!({"command": "pwd"})).await;
+        assert!(!result.is_error);
+        assert!(result.content.contains(work.to_str().unwrap()));
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

@@ -29,6 +29,9 @@ fn default_max_history_messages() -> usize {
 fn default_data_dir() -> String {
     "./microclaw.data".into()
 }
+fn default_working_dir() -> String {
+    "./tmp".into()
+}
 fn default_timezone() -> String {
     "UTC".into()
 }
@@ -67,6 +70,8 @@ pub struct Config {
     pub max_history_messages: usize,
     #[serde(default = "default_data_dir")]
     pub data_dir: String,
+    #[serde(default = "default_working_dir")]
+    pub working_dir: String,
     #[serde(default)]
     pub openai_api_key: Option<String>,
     #[serde(default = "default_timezone")]
@@ -174,6 +179,9 @@ impl Config {
                 self.llm_base_url = None;
             }
         }
+        if self.working_dir.trim().is_empty() {
+            self.working_dir = default_working_dir();
+        }
 
         // Validate required fields
         if self.telegram_bot_token.is_empty() && self.discord_bot_token.is_none() {
@@ -214,6 +222,7 @@ mod tests {
             max_tool_iterations: 100,
             max_history_messages: 50,
             data_dir: "./microclaw.data".into(),
+            working_dir: "./tmp".into(),
             openai_api_key: None,
             timezone: "UTC".into(),
             allowed_groups: vec![],
@@ -258,6 +267,7 @@ mod tests {
         config.control_chat_ids = vec![999];
         assert_eq!(config.model, "claude-sonnet-4-5-20250929");
         assert_eq!(config.data_dir, "./microclaw.data");
+        assert_eq!(config.working_dir, "./tmp");
         assert_eq!(config.openai_api_key.as_deref(), Some("sk-test"));
         assert_eq!(config.timezone, "US/Eastern");
         assert_eq!(config.allowed_groups, vec![123, 456]);
@@ -282,7 +292,16 @@ mod tests {
         assert_eq!(config.max_tokens, 8192);
         assert_eq!(config.max_tool_iterations, 100);
         assert_eq!(config.data_dir, "./microclaw.data");
+        assert_eq!(config.working_dir, "./tmp");
         assert_eq!(config.timezone, "UTC");
+    }
+
+    #[test]
+    fn test_post_deserialize_empty_working_dir_uses_default() {
+        let yaml = "telegram_bot_token: tok\nbot_username: bot\napi_key: key\nworking_dir: '  '\n";
+        let mut config: Config = serde_yaml::from_str(yaml).unwrap();
+        config.post_deserialize().unwrap();
+        assert_eq!(config.working_dir, "./tmp");
     }
 
     #[test]

@@ -1,12 +1,23 @@
 use async_trait::async_trait;
 use serde_json::json;
+use std::path::PathBuf;
 use tracing::info;
 
 use crate::claude::ToolDefinition;
 
 use super::{schema_object, Tool, ToolResult};
 
-pub struct ReadFileTool;
+pub struct ReadFileTool {
+    working_dir: PathBuf,
+}
+
+impl ReadFileTool {
+    pub fn new(working_dir: &str) -> Self {
+        Self {
+            working_dir: PathBuf::from(working_dir),
+        }
+    }
+}
 
 #[async_trait]
 impl Tool for ReadFileTool {
@@ -43,14 +54,16 @@ impl Tool for ReadFileTool {
             Some(p) => p,
             None => return ToolResult::error("Missing 'path' parameter".into()),
         };
+        let resolved_path = super::resolve_tool_path(&self.working_dir, path);
+        let resolved_path_str = resolved_path.to_string_lossy().to_string();
 
-        if let Err(msg) = crate::tools::path_guard::check_path(path) {
+        if let Err(msg) = crate::tools::path_guard::check_path(&resolved_path_str) {
             return ToolResult::error(msg);
         }
 
-        info!("Reading file: {}", path);
+        info!("Reading file: {}", resolved_path.display());
 
-        let content = match tokio::fs::read_to_string(path).await {
+        let content = match tokio::fs::read_to_string(&resolved_path).await {
             Ok(c) => c,
             Err(e) => return ToolResult::error(format!("Failed to read file: {e}")),
         };
@@ -90,7 +103,7 @@ mod tests {
         let file = dir.join("test.txt");
         std::fs::write(&file, "line1\nline2\nline3\nline4\nline5").unwrap();
 
-        let tool = ReadFileTool;
+        let tool = ReadFileTool::new(".");
         let result = tool.execute(json!({"path": file.to_str().unwrap()})).await;
         assert!(!result.is_error);
         assert!(result.content.contains("line1"));
@@ -108,7 +121,7 @@ mod tests {
         let file = dir.join("test.txt");
         std::fs::write(&file, "a\nb\nc\nd\ne").unwrap();
 
-        let tool = ReadFileTool;
+        let tool = ReadFileTool::new(".");
         // offset=2 (1-based, becomes index 1), limit=2 -> lines 2 and 3
         let result = tool
             .execute(json!({"path": file.to_str().unwrap(), "offset": 2, "limit": 2}))
@@ -123,7 +136,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_file_not_found() {
-        let tool = ReadFileTool;
+        let tool = ReadFileTool::new(".");
         let result = tool.execute(json!({"path": "/nonexistent/file.txt"})).await;
         assert!(result.is_error);
         assert!(result.content.contains("Failed to read file"));
@@ -131,9 +144,24 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_file_missing_path() {
-        let tool = ReadFileTool;
+        let tool = ReadFileTool::new(".");
         let result = tool.execute(json!({})).await;
         assert!(result.is_error);
         assert!(result.content.contains("Missing 'path'"));
+    }
+
+    #[tokio::test]
+    async fn test_read_file_resolves_relative_to_working_dir() {
+        let root = std::env::temp_dir().join(format!("microclaw_rf3_{}", uuid::Uuid::new_v4()));
+        let work = root.join("workspace");
+        std::fs::create_dir_all(&work).unwrap();
+        std::fs::write(work.join("test.txt"), "inside").unwrap();
+
+        let tool = ReadFileTool::new(work.to_str().unwrap());
+        let result = tool.execute(json!({"path": "test.txt"})).await;
+        assert!(!result.is_error);
+        assert!(result.content.contains("inside"));
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

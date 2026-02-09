@@ -275,6 +275,7 @@ model: "claude-sonnet-4-20250514"
 # 可选
 # llm_base_url: "https://..."
 data_dir: "./microclaw.data"
+working_dir: "./tmp"
 timezone: "UTC"
 ```
 
@@ -320,6 +321,7 @@ microclaw gateway uninstall
 | `model` | 否 | 随 provider 默认 | 模型名 |
 | `llm_base_url` | 否 | provider 预设默认值 | 自定义 API 基础地址 |
 | `data_dir` | 否 | `./microclaw.data` | 数据根目录（运行时数据在 `data_dir/runtime`，技能在 `data_dir/skills`） |
+| `working_dir` | 否 | `./tmp` | 工具默认工作目录；`bash/read_file/write_file/edit_file/glob/grep` 的相对路径都以此为基准 |
 | `max_tokens` | 否 | `8192` | 每次 Claude 回复的最大 token |
 | `max_tool_iterations` | 否 | `100` | 每条消息的最大工具循环次数 |
 | `max_history_messages` | 否 | `50` | 作为上下文发送的历史消息数 |
