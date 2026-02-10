@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import type { ReadonlyJSONObject, ReadonlyJSONValue } from 'assistant-stream/utils'
 import {
   AssistantRuntimeProvider,
   useLocalRuntime,
@@ -7,6 +8,7 @@ import {
   type ChatModelRunOptions,
   type ChatModelRunResult,
   type ThreadMessageLike,
+  type ToolCallMessagePartProps,
 } from '@assistant-ui/react'
 import { Thread } from '@assistant-ui/react-ui'
 import {
@@ -41,15 +43,24 @@ type BackendMessage = {
   timestamp?: string
 }
 
+type ToolStartPayload = {
+  tool_use_id: string
+  name: string
+  input?: unknown
+}
+
+type ToolResultPayload = {
+  tool_use_id: string
+  name: string
+  is_error?: boolean
+  output?: unknown
+  duration_ms?: number
+  bytes?: number
+  status_code?: number
+  error_type?: string
+}
+
 type Appearance = 'dark' | 'light'
-
-function readToken(): string {
-  return localStorage.getItem('microclaw_web_token') || ''
-}
-
-function saveToken(token: string): void {
-  localStorage.setItem('microclaw_web_token', token)
-}
 
 function readAppearance(): Appearance {
   const saved = localStorage.getItem('microclaw_appearance')
@@ -64,25 +75,21 @@ if (typeof document !== 'undefined') {
   document.documentElement.classList.toggle('dark', readAppearance() === 'dark')
 }
 
-function makeHeaders(token: string, options: RequestInit = {}): HeadersInit {
+function makeHeaders(options: RequestInit = {}): HeadersInit {
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string> | undefined),
   }
   if (options.body && !headers['Content-Type']) {
     headers['Content-Type'] = 'application/json'
   }
-  if (token.trim()) {
-    headers.Authorization = `Bearer ${token.trim()}`
-  }
   return headers
 }
 
 async function api<T>(
   path: string,
-  token: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const res = await fetch(path, { ...options, headers: makeHeaders(token, options) })
+  const res = await fetch(path, { ...options, headers: makeHeaders(options) })
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
   if (!res.ok) {
     throw new Error(String(data.error || data.message || `HTTP ${res.status}`))
@@ -193,6 +200,75 @@ function mapBackendHistory(messages: BackendMessage[]): ThreadMessageLike[] {
   }))
 }
 
+function makeSessionKey(): string {
+  return `session-${new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14)}`
+}
+
+function asObject(value: unknown): Record<string, unknown> {
+  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    return value as Record<string, unknown>
+  }
+  return {}
+}
+
+function toJsonValue(value: unknown): ReadonlyJSONValue {
+  try {
+    return JSON.parse(JSON.stringify(value)) as ReadonlyJSONValue
+  } catch {
+    return String(value)
+  }
+}
+
+function toJsonObject(value: unknown): ReadonlyJSONObject {
+  const normalized = toJsonValue(value)
+  if (typeof normalized === 'object' && normalized !== null && !Array.isArray(normalized)) {
+    return normalized as ReadonlyJSONObject
+  }
+  return {}
+}
+
+function formatUnknown(value: unknown): string {
+  if (typeof value === 'string') return value
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
+}
+
+function ToolCallCard(props: ToolCallMessagePartProps) {
+  const result = asObject(props.result)
+  const hasResult = Object.keys(result).length > 0
+  const output = result.output
+  const duration = result.duration_ms
+  const bytes = result.bytes
+  const statusCode = result.status_code
+  const errorType = result.error_type
+
+  return (
+    <div className="tool-card">
+      <div className="tool-card-head">
+        <span className="tool-card-name">{props.toolName}</span>
+        <span className={`tool-card-state ${hasResult ? (props.isError ? 'error' : 'ok') : 'running'}`}>
+          {hasResult ? (props.isError ? 'error' : 'done') : 'running'}
+        </span>
+      </div>
+      {Object.keys(props.args || {}).length > 0 ? (
+        <pre className="tool-card-pre">{JSON.stringify(props.args, null, 2)}</pre>
+      ) : null}
+      {hasResult ? (
+        <div className="tool-card-meta">
+          {typeof duration === 'number' ? <span>{duration}ms</span> : null}
+          {typeof bytes === 'number' ? <span>{bytes}b</span> : null}
+          {typeof statusCode === 'number' ? <span>HTTP {statusCode}</span> : null}
+          {typeof errorType === 'string' && errorType ? <span>{errorType}</span> : null}
+        </div>
+      ) : null}
+      {output !== undefined ? <pre className="tool-card-pre">{formatUnknown(output)}</pre> : null}
+    </div>
+  )
+}
+
 type ThreadPaneProps = {
   adapter: ChatModelAdapter
   initialMessages: ThreadMessageLike[]
@@ -215,6 +291,9 @@ function ThreadPane({ adapter, initialMessages, runtimeKey }: ThreadPaneProps) {
             allowSpeak: false,
             allowFeedbackNegative: false,
             allowFeedbackPositive: false,
+            components: {
+              ToolFallback: ToolCallCard,
+            },
           }}
           userMessage={{ allowEdit: false }}
           composer={{ allowAttachments: false }}
@@ -231,20 +310,17 @@ function ThreadPane({ adapter, initialMessages, runtimeKey }: ThreadPaneProps) {
 
 function App() {
   const [appearance, setAppearance] = useState<Appearance>(readAppearance())
-  const [token, setToken] = useState<string>(readToken())
   const [sessions, setSessions] = useState<SessionItem[]>([])
   const [extraSessions, setExtraSessions] = useState<string[]>([])
   const [sessionKey, setSessionKey] = useState<string>('main')
   const [historySeed, setHistorySeed] = useState<ThreadMessageLike[]>([])
+  const [historyCountBySession, setHistoryCountBySession] = useState<Record<string, number>>({})
   const [runtimeNonce, setRuntimeNonce] = useState<number>(0)
-  const [senderName, setSenderName] = useState<string>('web-user')
   const [error, setError] = useState<string>('')
   const [statusText, setStatusText] = useState<string>('Idle')
   const [replayNotice, setReplayNotice] = useState<string>('')
   const [sending, setSending] = useState<boolean>(false)
   const [configOpen, setConfigOpen] = useState<boolean>(false)
-  const [newSessionOpen, setNewSessionOpen] = useState<boolean>(false)
-  const [newSessionName, setNewSessionName] = useState<string>('')
   const [config, setConfig] = useState<ConfigPayload | null>(null)
   const [configDraft, setConfigDraft] = useState<Record<string, unknown>>({})
   const [saveStatus, setSaveStatus] = useState<string>('')
@@ -255,15 +331,17 @@ function App() {
   }, [sessions, extraSessions])
 
   async function loadSessions(): Promise<void> {
-    const data = await api<{ sessions?: SessionItem[] }>('/api/sessions', token)
+    const data = await api<{ sessions?: SessionItem[] }>('/api/sessions')
     setSessions(Array.isArray(data.sessions) ? data.sessions : [])
   }
 
   async function loadHistory(target = sessionKey): Promise<void> {
     const query = new URLSearchParams({ session_key: target, limit: '200' })
-    const data = await api<{ messages?: BackendMessage[] }>(`/api/history?${query.toString()}`, token)
-    const mapped = mapBackendHistory(Array.isArray(data.messages) ? data.messages : [])
+    const data = await api<{ messages?: BackendMessage[] }>(`/api/history?${query.toString()}`)
+    const rawMessages = Array.isArray(data.messages) ? data.messages : []
+    const mapped = mapBackendHistory(rawMessages)
     setHistorySeed(mapped)
+    setHistoryCountBySession((prev) => ({ ...prev, [target]: rawMessages.length }))
     setRuntimeNonce((x) => x + 1)
   }
 
@@ -278,100 +356,170 @@ function App() {
         setReplayNotice('')
         setError('')
 
-        const sendResponse = await api<{ run_id?: string }>('/api/send_stream', token, {
-          method: 'POST',
-          body: JSON.stringify({
-            session_key: sessionKey,
-            sender_name: senderName || 'web-user',
-            message: userText,
-          }),
-          signal: options.abortSignal,
-        })
+        try {
+          const sendResponse = await api<{ run_id?: string }>('/api/send_stream', {
+            method: 'POST',
+            body: JSON.stringify({
+              session_key: sessionKey,
+              sender_name: 'web-user',
+              message: userText,
+            }),
+            signal: options.abortSignal,
+          })
 
-        const runId = sendResponse.run_id
-        if (!runId) {
-          throw new Error('missing run_id')
-        }
+          const runId = sendResponse.run_id
+          if (!runId) {
+            throw new Error('missing run_id')
+          }
 
-        const query = new URLSearchParams({ run_id: runId })
-        const streamResponse = await fetch(`/api/stream?${query.toString()}`, {
-          method: 'GET',
-          headers: makeHeaders(token),
-          cache: 'no-store',
-          signal: options.abortSignal,
-        })
+          const query = new URLSearchParams({ run_id: runId })
+          const streamResponse = await fetch(`/api/stream?${query.toString()}`, {
+            method: 'GET',
+            headers: makeHeaders(),
+            cache: 'no-store',
+            signal: options.abortSignal,
+          })
 
-        if (!streamResponse.ok) {
-          const text = await streamResponse.text().catch(() => '')
-          throw new Error(text || `HTTP ${streamResponse.status}`)
-        }
+          if (!streamResponse.ok) {
+            const text = await streamResponse.text().catch(() => '')
+            throw new Error(text || `HTTP ${streamResponse.status}`)
+          }
 
-        for await (const event of parseSseFrames(streamResponse, options.abortSignal)) {
-          const data = event.payload
-
-          if (event.event === 'replay_meta') {
-            if (data.replay_truncated === true) {
-              const oldest = typeof data.oldest_event_id === 'number' ? data.oldest_event_id : null
-              const message =
-                oldest !== null
-                  ? `Stream history was truncated. Recovery resumed from event #${oldest}.`
-                  : 'Stream history was truncated. Recovery resumed from the earliest available event.'
-              setReplayNotice(message)
+          let assistantText = ''
+          const toolState = new Map<
+            string,
+            {
+              name: string
+              args: ReadonlyJSONObject
+              result?: ReadonlyJSONValue
+              isError?: boolean
             }
-            continue
+          >()
+
+          const makeContent = () => {
+            const toolParts = Array.from(toolState.entries()).map(([toolCallId, tool]) => ({
+              type: 'tool-call' as const,
+              toolCallId,
+              toolName: tool.name,
+              args: tool.args,
+              argsText: JSON.stringify(tool.args),
+              ...(tool.result ? { result: tool.result } : {}),
+              ...(tool.isError !== undefined ? { isError: tool.isError } : {}),
+            }))
+
+            return [
+              ...(assistantText ? [{ type: 'text' as const, text: assistantText }] : []),
+              ...toolParts,
+            ]
           }
 
-          if (event.event === 'status') {
-            const message = typeof data.message === 'string' ? data.message : ''
-            if (message) setStatusText(message)
-            continue
-          }
+          for await (const event of parseSseFrames(streamResponse, options.abortSignal)) {
+            const data = event.payload
 
-          if (event.event === 'delta') {
-            const delta = typeof data.delta === 'string' ? data.delta : ''
-            if (!delta) continue
-
-            yield {
-              content: [
-                {
-                  type: 'text',
-                  text: delta,
-                },
-              ],
+            if (event.event === 'replay_meta') {
+              if (data.replay_truncated === true) {
+                const oldest = typeof data.oldest_event_id === 'number' ? data.oldest_event_id : null
+                const message =
+                  oldest !== null
+                    ? `Stream history was truncated. Recovery resumed from event #${oldest}.`
+                    : 'Stream history was truncated. Recovery resumed from the earliest available event.'
+                setReplayNotice(message)
+              }
+              continue
             }
-            continue
-          }
 
-          if (event.event === 'error') {
-            const message = typeof data.error === 'string' ? data.error : 'stream error'
-            throw new Error(message)
-          }
+            if (event.event === 'status') {
+              const message = typeof data.message === 'string' ? data.message : ''
+              if (message) setStatusText(message)
+              continue
+            }
 
-          if (event.event === 'done') {
-            setStatusText('Done')
-            break
+            if (event.event === 'tool_start') {
+              const payload = data as ToolStartPayload
+              if (!payload.tool_use_id || !payload.name) continue
+              toolState.set(payload.tool_use_id, {
+                name: payload.name,
+                args: toJsonObject(payload.input),
+              })
+              setStatusText(`tool: ${payload.name}...`)
+              const content = makeContent()
+              if (content.length > 0) yield { content }
+              continue
+            }
+
+            if (event.event === 'tool_result') {
+              const payload = data as ToolResultPayload
+              if (!payload.tool_use_id || !payload.name) continue
+
+              const previous = toolState.get(payload.tool_use_id)
+              const resultPayload: ReadonlyJSONObject = toJsonObject({
+                output: payload.output ?? '',
+                duration_ms: payload.duration_ms ?? null,
+                bytes: payload.bytes ?? null,
+                status_code: payload.status_code ?? null,
+                error_type: payload.error_type ?? null,
+              })
+
+              toolState.set(payload.tool_use_id, {
+                name: payload.name,
+                args: previous?.args ?? {},
+                result: resultPayload,
+                isError: Boolean(payload.is_error),
+              })
+
+              const ms = typeof payload.duration_ms === 'number' ? payload.duration_ms : 0
+              const bytes = typeof payload.bytes === 'number' ? payload.bytes : 0
+              setStatusText(`tool: ${payload.name} ${payload.is_error ? 'error' : 'ok'} ${ms}ms ${bytes}b`)
+              const content = makeContent()
+              if (content.length > 0) yield { content }
+              continue
+            }
+
+            if (event.event === 'delta') {
+              const delta = typeof data.delta === 'string' ? data.delta : ''
+              if (!delta) continue
+              assistantText += delta
+              const content = makeContent()
+              if (content.length > 0) yield { content }
+              continue
+            }
+
+            if (event.event === 'error') {
+              const message = typeof data.error === 'string' ? data.error : 'stream error'
+              throw new Error(message)
+            }
+
+            if (event.event === 'done') {
+              setStatusText('Done')
+              break
+            }
           }
+        } finally {
+          setSending(false)
+          void loadSessions()
+          void loadHistory(sessionKey)
         }
-
-        setSending(false)
-        void loadSessions()
       },
     }),
-    [token, sessionKey, senderName],
+    [sessionKey],
   )
 
-  function createSession(rawName?: string): void {
-    const cleaned = (rawName || '').trim().replace(/\s+/g, ' ')
-    const key = cleaned || `session-${new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14)}`
+  function createSession(): void {
+    const currentCount = historyCountBySession[sessionKey] ?? historySeed.length
+    if (currentCount === 0) {
+      setStatusText('Current session is empty. Reuse this session.')
+      return
+    }
+
+    const key = makeSessionKey()
     setExtraSessions((prev) => (prev.includes(key) ? prev : [key, ...prev]))
     setSessionKey(key)
+    setHistoryCountBySession((prev) => ({ ...prev, [key]: 0 }))
     setHistorySeed([])
     setRuntimeNonce((x) => x + 1)
     setReplayNotice('')
     setError('')
     setStatusText('Idle')
-    setNewSessionName('')
-    setNewSessionOpen(false)
   }
 
   function toggleAppearance(): void {
@@ -380,7 +528,7 @@ function App() {
 
   async function onResetSession(): Promise<void> {
     try {
-      await api('/api/reset', token, {
+      await api('/api/reset', {
         method: 'POST',
         body: JSON.stringify({ session_key: sessionKey }),
       })
@@ -393,7 +541,7 @@ function App() {
 
   async function openConfig(): Promise<void> {
     setSaveStatus('')
-    const data = await api<{ config?: ConfigPayload }>('/api/config', token)
+    const data = await api<{ config?: ConfigPayload }>('/api/config')
     setConfig(data.config || null)
     setConfigDraft({
       llm_provider: data.config?.llm_provider || '',
@@ -405,7 +553,6 @@ function App() {
       web_enabled: Boolean(data.config?.web_enabled),
       web_host: String(data.config?.web_host || '127.0.0.1'),
       web_port: Number(data.config?.web_port ?? 10961),
-      web_auth_token: '',
     })
     setConfigOpen(true)
   }
@@ -423,20 +570,14 @@ function App() {
         web_port: Number(configDraft.web_port || 10961),
       }
       const apiKey = String(configDraft.api_key || '').trim()
-      const webAuth = String(configDraft.web_auth_token || '').trim()
       if (apiKey) payload.api_key = apiKey
-      if (webAuth) payload.web_auth_token = webAuth
 
-      await api('/api/config', token, { method: 'PUT', body: JSON.stringify(payload) })
+      await api('/api/config', { method: 'PUT', body: JSON.stringify(payload) })
       setSaveStatus('Saved. Restart microclaw to apply changes.')
     } catch (e) {
       setSaveStatus(`Save failed: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
-
-  useEffect(() => {
-    saveToken(token)
-  }, [token])
 
   useEffect(() => {
     saveAppearance(appearance)
@@ -463,11 +604,11 @@ function App() {
   const runtimeKey = `${sessionKey}-${runtimeNonce}`
 
   return (
-    <Theme appearance={appearance} accentColor="teal" grayColor="slate" radius="medium" scaling="100%">
+    <Theme appearance={appearance} accentColor="green" grayColor="slate" radius="medium" scaling="100%">
       <div
         className={
           appearance === 'dark'
-            ? 'h-screen w-screen bg-slate-950'
+            ? 'h-screen w-screen bg-[#02110d]'
             : 'h-screen w-screen bg-[radial-gradient(1200px_560px_at_-8%_-10%,#d1fae5_0%,transparent_58%),radial-gradient(1200px_560px_at_108%_-12%,#e0f2fe_0%,transparent_58%),#f8fafc]'
         }
       >
@@ -475,26 +616,24 @@ function App() {
           <SessionSidebar
             appearance={appearance}
             onToggleAppearance={toggleAppearance}
-            token={token}
-            onTokenChange={setToken}
             sessionKeys={sessionKeys}
             sessionKey={sessionKey}
             onSessionSelect={setSessionKey}
             onOpenConfig={openConfig}
-            onNewSession={() => setNewSessionOpen(true)}
+            onNewSession={createSession}
           />
 
           <main
             className={
               appearance === 'dark'
-                ? 'flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-slate-900'
+                ? 'flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[#071a14]'
                 : 'flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-white/95'
             }
           >
             <header
               className={
                 appearance === 'dark'
-                  ? 'sticky top-0 z-10 border-b border-slate-800 bg-slate-900/95 px-4 py-3 backdrop-blur-sm'
+                  ? 'sticky top-0 z-10 border-b border-emerald-950/80 bg-[#071a14]/95 px-4 py-3 backdrop-blur-sm'
                   : 'sticky top-0 z-10 border-b border-slate-200 bg-white/92 px-4 py-3 backdrop-blur-sm'
               }
             >
@@ -506,17 +645,11 @@ function App() {
                   <Badge color="teal" variant="soft">
                     assistant-ui
                   </Badge>
-                  <Badge color={sending ? 'teal' : 'gray'} variant="surface">
+                  <Badge color={sending ? 'green' : 'gray'} variant="surface">
                     {sending ? 'Streaming' : 'Idle'}
                   </Badge>
                 </Flex>
                 <Flex gap="2" align="center">
-                  <TextField.Root
-                    style={{ width: 170 }}
-                    value={senderName}
-                    onChange={(e) => setSenderName(e.target.value)}
-                    placeholder="sender name"
-                  />
                   <Button
                     size="1"
                     variant="soft"
@@ -539,7 +672,7 @@ function App() {
             <div
               className={
                 appearance === 'dark'
-                  ? 'flex min-h-0 flex-1 flex-col bg-[linear-gradient(to_bottom,#020617,#0f172a_22%)]'
+                  ? 'flex min-h-0 flex-1 flex-col bg-[linear-gradient(to_bottom,#071a14,#02100c_28%)]'
                   : 'flex min-h-0 flex-1 flex-col bg-[linear-gradient(to_bottom,#f8fafc,white_20%)]'
               }
             >
@@ -562,34 +695,6 @@ function App() {
             </div>
           </main>
         </div>
-
-        <Dialog.Root open={newSessionOpen} onOpenChange={setNewSessionOpen}>
-          <Dialog.Content maxWidth="480px">
-            <Dialog.Title>New Session</Dialog.Title>
-            <Dialog.Description size="2" mb="3">
-              Create a new local web chat session.
-            </Dialog.Description>
-            <Flex direction="column" gap="3">
-              <TextField.Root
-                value={newSessionName}
-                onChange={(e) => setNewSessionName(e.target.value)}
-                placeholder="Session name (optional)"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    createSession(newSessionName)
-                  }
-                }}
-              />
-              <Flex justify="end" gap="2">
-                <Dialog.Close>
-                  <Button variant="soft">Cancel</Button>
-                </Dialog.Close>
-                <Button onClick={() => createSession(newSessionName)}>Create</Button>
-              </Flex>
-            </Flex>
-          </Dialog.Content>
-        </Dialog.Root>
 
         <Dialog.Root open={configOpen} onOpenChange={setConfigOpen}>
           <Dialog.Content maxWidth="640px">
@@ -636,11 +741,6 @@ function App() {
                   value={String(configDraft.web_port || 10961)}
                   onChange={(e) => setConfigDraft({ ...configDraft, web_port: e.target.value })}
                   placeholder="web_port"
-                />
-                <TextField.Root
-                  value={String(configDraft.web_auth_token || '')}
-                  onChange={(e) => setConfigDraft({ ...configDraft, web_auth_token: e.target.value })}
-                  placeholder="web_auth_token (optional)"
                 />
                 <Flex gap="2">
                   <Button

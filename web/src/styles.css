@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@assistant-ui/react-ui/styles/themes/default.css";
 
 html,
 body,
@@ -23,6 +24,250 @@ body {
 html:not(.dark) body {
   background: #f8fafc;
   color: #0f172a;
+}
+
+html.dark .aui-root {
+  --aui-background: 155 46% 7%;
+  --aui-foreground: 142 20% 92%;
+  --aui-card: 155 36% 10%;
+  --aui-card-foreground: 142 20% 92%;
+  --aui-popover: 155 36% 10%;
+  --aui-popover-foreground: 142 20% 92%;
+  --aui-primary: 145 65% 54%;
+  --aui-primary-foreground: 155 35% 10%;
+  --aui-secondary: 155 26% 16%;
+  --aui-secondary-foreground: 140 18% 88%;
+  --aui-muted: 155 22% 15%;
+  --aui-muted-foreground: 142 12% 70%;
+  --aui-accent: 155 25% 18%;
+  --aui-accent-foreground: 142 22% 95%;
+  --aui-destructive: 1 70% 47%;
+  --aui-destructive-foreground: 0 0% 98%;
+  --aui-border: 154 26% 20%;
+  --aui-input: 154 26% 22%;
+  --aui-ring: 145 65% 54%;
+  --aui-thread-max-width: 48rem;
+}
+
+html.dark .aui-thread-root {
+  background: transparent;
+}
+
+html.dark .aui-thread-viewport {
+  padding-top: 14px;
+  padding-bottom: 24px;
+}
+
+html.dark .aui-assistant-message-root {
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+}
+
+html.dark .aui-assistant-avatar,
+html.dark :where(.aui-assistant-message-root) > .aui-avatar-root {
+  margin-right: 0;
+}
+
+html.dark .aui-avatar-fallback {
+  border: 1px solid hsl(153 30% 26%);
+  background: linear-gradient(180deg, hsl(154 28% 16%), hsl(154 24% 13%));
+  color: hsl(145 26% 88%);
+}
+
+html.dark .aui-assistant-message-content {
+  max-width: calc(var(--aui-thread-max-width) * 0.9);
+  border: 1px solid hsl(154 26% 21% / 0.95);
+  border-radius: 14px;
+  background: linear-gradient(180deg, hsl(156 36% 12%), hsl(156 34% 10%));
+  padding: 12px 14px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
+  color: hsl(146 26% 92%);
+  line-height: 1.7;
+}
+
+html.dark .aui-assistant-message-content p {
+  margin: 0 0 10px;
+}
+
+html.dark .aui-assistant-message-content p:last-child {
+  margin-bottom: 0;
+}
+
+html.dark .aui-assistant-message-content ul,
+html.dark .aui-assistant-message-content ol {
+  margin: 8px 0 10px 20px;
+}
+
+html.dark .aui-assistant-message-content li {
+  margin: 4px 0;
+}
+
+html.dark .aui-assistant-message-content a {
+  color: hsl(151 72% 68%);
+  text-underline-offset: 2px;
+}
+
+html.dark .aui-assistant-message-content code {
+  border-radius: 6px;
+  border: 1px solid hsl(155 22% 24%);
+  background: hsl(155 30% 8%);
+  padding: 1px 6px;
+  font-size: 0.85em;
+}
+
+html.dark .aui-assistant-message-content pre {
+  margin: 10px 0;
+  border-radius: 10px;
+  border: 1px solid hsl(154 24% 22%);
+  background: hsl(155 32% 7%);
+  padding: 10px 12px;
+}
+
+html.dark .aui-assistant-message-content pre code {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+html.dark .aui-assistant-message-content blockquote {
+  margin: 10px 0;
+  border-left: 3px solid hsl(149 52% 45%);
+  background: hsl(155 30% 9%);
+  padding: 6px 10px;
+  color: hsl(146 18% 82%);
+}
+
+html.dark .aui-user-message-content {
+  border: 1px solid hsl(145 45% 34% / 0.85);
+  background: linear-gradient(180deg, hsl(147 44% 24%), hsl(147 42% 20%));
+  color: hsl(145 38% 96%);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.26);
+}
+
+html.dark .aui-composer-root {
+  border: 1px solid hsl(154 26% 22%);
+  background: hsl(155 30% 9% / 0.92);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+html.dark .aui-composer-root:hover {
+  border-color: hsl(152 34% 29%);
+}
+
+html.dark .aui-composer-root:focus-within {
+  border-color: hsl(145 65% 54%);
+  box-shadow: 0 0 0 1px hsl(145 65% 54% / 0.2), 0 0 0 6px hsl(145 65% 54% / 0.09);
+}
+
+html.dark .aui-composer-input {
+  color: hsl(145 26% 94%);
+}
+
+html.dark .aui-composer-input::placeholder {
+  color: hsl(152 9% 60%);
+}
+
+html.dark .aui-composer-send {
+  background: linear-gradient(180deg, hsl(145 63% 50%), hsl(145 58% 43%));
+  color: hsl(145 20% 8%);
+}
+
+html.dark .aui-composer-send:hover {
+  filter: brightness(1.08);
+}
+
+html.dark .aui-assistant-action-bar-root {
+  grid-column-start: 2;
+  margin-left: 2px;
+  margin-top: 2px;
+  opacity: 0.9;
+}
+
+html.dark .aui-assistant-action-bar-root button {
+  border-radius: 8px;
+}
+
+html.dark .aui-thread-scroll-to-bottom {
+  border: 1px solid hsl(154 26% 24%);
+  background: hsl(155 36% 10%);
+}
+
+.tool-card {
+  margin-top: 10px;
+  border-radius: 12px;
+  border: 1px solid hsl(154 26% 24%);
+  background: linear-gradient(180deg, hsl(155 30% 11%), hsl(155 27% 9%));
+  padding: 10px 12px;
+}
+
+.tool-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tool-card-name {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: hsl(146 36% 90%);
+}
+
+.tool-card-state {
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.tool-card-state.running {
+  border-color: hsl(45 92% 48% / 0.45);
+  background: hsl(45 92% 44% / 0.14);
+  color: hsl(45 95% 70%);
+}
+
+.tool-card-state.ok {
+  border-color: hsl(145 64% 44% / 0.45);
+  background: hsl(145 64% 40% / 0.14);
+  color: hsl(145 66% 74%);
+}
+
+.tool-card-state.error {
+  border-color: hsl(0 68% 50% / 0.45);
+  background: hsl(0 68% 46% / 0.14);
+  color: hsl(0 72% 76%);
+}
+
+.tool-card-meta {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tool-card-meta > span {
+  border: 1px solid hsl(154 26% 23%);
+  border-radius: 9999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: hsl(147 18% 82%);
+}
+
+.tool-card-pre {
+  margin-top: 8px;
+  max-height: 220px;
+  overflow: auto;
+  border-radius: 8px;
+  border: 1px solid hsl(154 24% 20%);
+  background: hsl(155 32% 7%);
+  padding: 8px 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  color: hsl(147 18% 84%);
 }
 
 * {

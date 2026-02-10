@@ -1073,10 +1073,29 @@ async fn asset_file(Path(file): Path<String>) -> impl IntoResponse {
     }
 }
 
+async fn icon_file() -> impl IntoResponse {
+    match WEB_ASSETS.get_file("icon.png") {
+        Some(file) => ([("content-type", "image/png")], file.contents().to_vec()).into_response(),
+        None => (StatusCode::NOT_FOUND, "Not Found").into_response(),
+    }
+}
+
+async fn favicon_file() -> impl IntoResponse {
+    if let Some(file) = WEB_ASSETS.get_file("favicon.ico") {
+        return ([("content-type", "image/x-icon")], file.contents().to_vec()).into_response();
+    }
+    if let Some(file) = WEB_ASSETS.get_file("icon.png") {
+        return ([("content-type", "image/png")], file.contents().to_vec()).into_response();
+    }
+    (StatusCode::NOT_FOUND, "Not Found").into_response()
+}
+
 fn build_router(web_state: WebState) -> Router {
     Router::new()
         .route("/", get(index))
         .route("/assets/*file", get(asset_file))
+        .route("/icon.png", get(icon_file))
+        .route("/favicon.ico", get(favicon_file))
         .route("/api/health", get(api_health))
         .route("/api/config", get(api_get_config).put(api_update_config))
         .route("/api/sessions", get(api_sessions))
