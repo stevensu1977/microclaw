@@ -2,8 +2,8 @@ use std::path::Path;
 use std::sync::Arc;
 
 use teloxide::prelude::*;
-use teloxide::types::ChatAction;
-use tracing::{error, info};
+use teloxide::types::{ChatAction, ParseMode};
+use tracing::{error, info, warn};
 
 use crate::agent_engine::{archive_conversation, process_with_agent, AgentRequestContext};
 use crate::claude::Message;
@@ -460,54 +460,182 @@ fn guess_image_media_type(data: &[u8]) -> String {
     }
 }
 
-#[cfg(test)]
 fn split_response_text(text: &str) -> Vec<String> {
     const MAX_LEN: usize = 4096;
+
     if text.len() <= MAX_LEN {
         return vec![text.to_string()];
     }
+
     let mut chunks = Vec::new();
-    let mut remaining = text;
+    let mut remaining = text.to_string();
+
     while !remaining.is_empty() {
         let chunk_len = if remaining.len() <= MAX_LEN {
             remaining.len()
         } else {
             let boundary = remaining.floor_char_boundary(MAX_LEN.min(remaining.len()));
-            remaining[..boundary].rfind('\n').unwrap_or(boundary)
+            remaining[..boundary].rfind(char::from(10)).unwrap_or(boundary)
         };
-        chunks.push(remaining[..chunk_len].to_string());
-        remaining = &remaining[chunk_len..];
-        if remaining.starts_with('\n') {
-            remaining = &remaining[1..];
+
+        let mut chunk = remaining[..chunk_len].to_string();
+        let mut next_remaining = remaining[chunk_len..].to_string();
+        if next_remaining.starts_with(char::from(10)) {
+            next_remaining = next_remaining[1..].to_string();
         }
+
+        // Keep fenced code blocks balanced per chunk; otherwise Telegram rejects MarkdownV2
+        // and the whole chunk falls back to plain text.
+        let fence_count = chunk
+            .lines()
+            .filter(|line| line.trim_start().starts_with("```"))
+            .count();
+        if fence_count % 2 == 1 {
+            chunk.push(char::from(10));
+            chunk.push_str("```");
+            if !next_remaining.is_empty() {
+                next_remaining = format!("```{}{}", char::from(10), next_remaining);
+            }
+        }
+
+        chunks.push(chunk);
+        remaining = next_remaining;
     }
+
     chunks
 }
 
-pub async fn send_response(bot: &Bot, chat_id: ChatId, text: &str) {
-    const MAX_LEN: usize = 4096;
+fn escape_markdown_v2(text: &str) -> String {
+    const ESCAPE_CHARS: &str = r"\_*[]()~`>#+-=|{}.!";
+    let mut escaped = String::with_capacity(text.len());
+    for ch in text.chars() {
+        if ESCAPE_CHARS.contains(ch) {
+            escaped.push('\\');
+        }
+        escaped.push(ch);
+    }
+    escaped
+}
 
-    if text.len() <= MAX_LEN {
-        let _ = bot.send_message(chat_id, text).await;
-        return;
+fn is_markdown_heading(line: &str) -> Option<&str> {
+    let trimmed = line.trim_start();
+    let hash_count = trimmed.chars().take_while(|c| *c == '#').count();
+    if (1..=6).contains(&hash_count) && trimmed.chars().nth(hash_count) == Some(' ') {
+        Some(trimmed[hash_count + 1..].trim())
+    } else {
+        None
+    }
+}
+
+fn render_non_code_markdown_segment(segment: &str) -> String {
+    let mut out = String::new();
+    let mut rest = segment;
+
+    while let Some(start) = rest.find("**") {
+        let (before, after_start) = rest.split_at(start);
+        out.push_str(&escape_markdown_v2(before));
+        let after_start = &after_start[2..];
+
+        if let Some(end) = after_start.find("**") {
+            let (inner, after) = after_start.split_at(end);
+            out.push('*');
+            out.push_str(&escape_markdown_v2(inner));
+            out.push('*');
+            rest = &after[2..];
+        } else {
+            out.push_str(&escape_markdown_v2("**"));
+            out.push_str(&escape_markdown_v2(after_start));
+            rest = "";
+            break;
+        }
     }
 
-    let mut remaining = text;
-    while !remaining.is_empty() {
-        let chunk_len = if remaining.len() <= MAX_LEN {
-            remaining.len()
+    out.push_str(&escape_markdown_v2(rest));
+    out
+}
+
+fn render_inline_markdown_v2_safe(line: &str) -> String {
+    let mut out = String::new();
+    let mut rest = line;
+
+    while let Some(start) = rest.find('`') {
+        let (before, after_start) = rest.split_at(start);
+        out.push_str(&render_non_code_markdown_segment(before));
+
+        let after_start = &after_start[1..];
+        if let Some(end) = after_start.find('`') {
+            let code = &after_start[..end];
+            out.push('`');
+            out.push_str(code);
+            out.push('`');
+            rest = &after_start[end + 1..];
         } else {
-            let boundary = remaining.floor_char_boundary(MAX_LEN.min(remaining.len()));
-            remaining[..boundary].rfind('\n').unwrap_or(boundary)
-        };
-
-        let chunk = &remaining[..chunk_len];
-        let _ = bot.send_message(chat_id, chunk).await;
-        remaining = &remaining[chunk_len..];
-
-        if remaining.starts_with('\n') {
-            remaining = &remaining[1..];
+            out.push_str(r"\`");
+            out.push_str(&render_non_code_markdown_segment(after_start));
+            rest = "";
+            break;
         }
+    }
+
+    out.push_str(&render_non_code_markdown_segment(rest));
+    out
+}
+
+fn render_markdown_v2_safe(text: &str) -> String {
+    let mut out = String::new();
+    let mut first = true;
+    let mut in_fenced_code = false;
+
+    for line in text.split(char::from(10)) {
+        if !first {
+            out.push(char::from(10));
+        }
+        first = false;
+
+        let trimmed = line.trim_start();
+        let is_fence = trimmed.starts_with("```");
+
+        if is_fence {
+            in_fenced_code = !in_fenced_code;
+            out.push_str(line);
+            continue;
+        }
+
+        if in_fenced_code {
+            out.push_str(line);
+            continue;
+        }
+
+        if let Some(title) = is_markdown_heading(line) {
+            if !title.is_empty() {
+                out.push('*');
+                out.push_str(&escape_markdown_v2(title));
+                out.push('*');
+            }
+        } else {
+            out.push_str(&render_inline_markdown_v2_safe(line));
+        }
+    }
+
+    out
+}
+
+async fn send_telegram_markdown_or_plain(bot: &Bot, chat_id: ChatId, text: &str) {
+    let markdown_text = render_markdown_v2_safe(text);
+    let markdown = bot
+        .send_message(chat_id, markdown_text)
+        .parse_mode(ParseMode::MarkdownV2)
+        .await;
+
+    if let Err(err) = markdown {
+        warn!("Telegram MarkdownV2 send failed, falling back to plain text: {err}");
+        let _ = bot.send_message(chat_id, text).await;
+    }
+}
+
+pub async fn send_response(bot: &Bot, chat_id: ChatId, text: &str) {
+    for chunk in split_response_text(text) {
+        send_telegram_markdown_or_plain(bot, chat_id, &chunk).await;
     }
 }
 
@@ -685,6 +813,46 @@ mod tests {
     }
 
     #[test]
+    fn test_escape_markdown_v2_reserved_chars() {
+        let input = "## Rust 2024 _bold_ [link](x)!\\";
+        let escaped = escape_markdown_v2(input);
+        assert!(escaped.contains("\\#\\# Rust 2024"));
+        assert!(escaped.contains("\\_bold\\_"));
+        assert!(escaped.contains("\\[link\\]\\(x\\)\\!"));
+        assert!(escaped.ends_with("\\\\"));
+    }
+
+
+    #[test]
+    fn test_render_markdown_v2_safe_heading_and_bold() {
+        let input = "## Rust 2024\nI am **MicroClawBot**.";
+        let rendered = render_markdown_v2_safe(input);
+        assert!(rendered.contains("*Rust 2024*"));
+        assert!(rendered.contains("I am *MicroClawBot*"));
+    }
+
+    #[test]
+    fn test_render_markdown_v2_safe_escapes_non_markdown_chars() {
+        let input = "list (a+b) = c!";
+        let rendered = render_markdown_v2_safe(input);
+        assert_eq!(rendered, "list \\(a\\+b\\) \\= c\\!");
+    }
+
+    #[test]
+    fn test_render_markdown_v2_safe_preserves_fenced_code_blocks() {
+        let input = "```bash\ncargo build\nrg \"TODO\" src\n```";
+        let rendered = render_markdown_v2_safe(input);
+        assert_eq!(rendered, input);
+    }
+
+    #[test]
+    fn test_render_markdown_v2_safe_preserves_inline_code() {
+        let input = "Run `cargo build` in src/(core).";
+        let rendered = render_markdown_v2_safe(input);
+        assert!(rendered.contains("`cargo build`"));
+        assert!(rendered.contains("src/\\(core\\)\\."));
+    }
+    #[test]
     fn test_split_response_text_long() {
         // Create a string longer than 4096 chars with newlines
         let mut text = String::new();
@@ -704,6 +872,27 @@ mod tests {
         assert!(total_len > 0);
     }
 
+
+    #[test]
+    fn test_split_response_text_balances_fenced_code_blocks() {
+        let mut text = String::new();
+        text.push_str("## Header\n");
+        text.push_str("```bash\n");
+        for _ in 0..300 {
+            text.push_str("echo hello world from a long script line\n");
+        }
+        text.push_str("```\n");
+
+        let chunks = split_response_text(&text);
+        assert!(chunks.len() > 1);
+        for chunk in chunks {
+            let fences = chunk
+                .lines()
+                .filter(|line| line.trim_start().starts_with("```"))
+                .count();
+            assert_eq!(fences % 2, 0, "chunk has unbalanced fences: {chunk}");
+        }
+    }
     #[test]
     fn test_split_response_text_no_newlines() {
         // Long string without newlines - should split at MAX_LEN
