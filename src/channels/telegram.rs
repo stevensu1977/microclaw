@@ -83,7 +83,7 @@ async fn handle_message(
                     .send_message(msg.chat.id, "No session to archive.")
                     .await;
             } else {
-                archive_conversation(&state.config.data_dir, chat_id, &messages);
+                archive_conversation(&state.config.data_dir, "telegram", chat_id, &messages);
                 let _ = bot
                     .send_message(
                         msg.chat.id,

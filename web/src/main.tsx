@@ -516,6 +516,72 @@ function parseDiscordChannelCsv(input: string): number[] {
   return Array.from(new Set(out))
 }
 
+function normalizeWorkingDirIsolation(value: unknown): 'chat' | 'shared' {
+  const normalized = String(value || '').trim().toLowerCase()
+  return normalized === 'shared' ? 'shared' : 'chat'
+}
+
+type ConfigFieldCardProps = {
+  label: string
+  description: React.ReactNode
+  children: React.ReactNode
+}
+
+function ConfigFieldCard({ label, description, children }: ConfigFieldCardProps) {
+  return (
+    <Card className="p-3">
+      <Text size="2" weight="medium">{label}</Text>
+      <Text size="1" color="gray" className="mt-1 block">{description}</Text>
+      <div className="mt-2">{children}</div>
+    </Card>
+  )
+}
+
+type ConfigToggleCardProps = {
+  label: string
+  description?: React.ReactNode
+  checked: boolean
+  onCheckedChange: (checked: boolean) => void
+  className: string
+  style?: React.CSSProperties
+}
+
+function ConfigToggleCard({ label, description, checked, onCheckedChange, className, style }: ConfigToggleCardProps) {
+  return (
+    <div className={className} style={style}>
+      <Flex justify="between" align="center">
+        <div>
+          <Text size="2">{label}</Text>
+          {description ? (
+            <Text size="1" color="gray" className="mt-1 block">
+              {description}
+            </Text>
+          ) : null}
+        </div>
+        <Switch checked={checked} onCheckedChange={onCheckedChange} />
+      </Flex>
+    </div>
+  )
+}
+
+type ConfigStepsCardProps = {
+  title?: string
+  steps: React.ReactNode[]
+}
+
+function ConfigStepsCard({ title = 'Setup Steps', steps }: ConfigStepsCardProps) {
+  return (
+    <Card className="mt-3 p-3">
+      <Text size="2" weight="bold">{title}</Text>
+      <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-slate-400">
+        {steps.map((step, index) => (
+          <li key={index}>{step}</li>
+        ))}
+      </ol>
+    </Card>
+  )
+}
+
 function App() {
   const [appearance, setAppearance] = useState<Appearance>(readAppearance())
   const [uiTheme, setUiTheme] = useState<UiTheme>(readUiTheme())
@@ -861,7 +927,7 @@ function App() {
       discord_allowed_channels_csv: Array.isArray(data.config?.discord_allowed_channels)
         ? (data.config?.discord_allowed_channels as number[]).join(',')
         : '',
-      working_dir_isolation: String(
+      working_dir_isolation: normalizeWorkingDirIsolation(
         data.config?.working_dir_isolation || DEFAULT_CONFIG_VALUES.working_dir_isolation,
       ),
       max_tokens: Number(data.config?.max_tokens ?? 8192),
@@ -943,7 +1009,7 @@ function App() {
         model: String(configDraft.model || ''),
         bot_username: String(configDraft.bot_username || '').trim(),
         discord_allowed_channels: parseDiscordChannelCsv(String(configDraft.discord_allowed_channels_csv || '')),
-        working_dir_isolation: String(
+        working_dir_isolation: normalizeWorkingDirIsolation(
           configDraft.working_dir_isolation || DEFAULT_CONFIG_VALUES.working_dir_isolation,
         ),
         max_tokens: Number(configDraft.max_tokens || 8192),
@@ -1109,26 +1175,27 @@ function App() {
           </main>
         </div>
         <Dialog.Root open={configOpen} onOpenChange={setConfigOpen}>
-          <Dialog.Content maxWidth="1120px" className="overflow-hidden" style={{ width: "1120px", height: "760px", maxWidth: "1120px", maxHeight: "760px" }}>
+          <Dialog.Content maxWidth="1120px" className="overflow-hidden flex flex-col" style={{ width: "1120px", height: "760px", maxWidth: "1120px", maxHeight: "760px" }}>
             <Dialog.Title>Settings</Dialog.Title>
             <Dialog.Description size="2" mb="3">
               Channel-first configuration. Save writes to microclaw.config.yaml. Restart is required.
             </Dialog.Description>
-            {config ? (
-              <Tabs.Root defaultValue="general" orientation="vertical" className="mt-2 h-[660px]">
+            <div className="mt-2 min-h-0 flex-1">
+              {config ? (
+                <Tabs.Root defaultValue="general" orientation="vertical" className="h-full min-h-0">
                 <div className="grid h-full grid-cols-[240px_minmax(0,1fr)] gap-4">
                   <Card className="h-full p-3" style={sectionCardStyle}>
-                    <Tabs.List className="flex flex-col gap-1">
+                    <Tabs.List className="mc-settings-tabs-list flex w-full flex-col gap-1">
                       <Text size="1" color="gray" className="px-2 pt-1 uppercase tracking-wide">Runtime</Text>
-                      <Tabs.Trigger value="general" className="justify-start rounded-lg px-3 py-2 text-[18px] leading-6 bg-transparent data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-200 hover:bg-white/8">⚙️  General</Tabs.Trigger>
-                      <Tabs.Trigger value="model" className="justify-start rounded-lg px-3 py-2 text-[18px] leading-6 bg-transparent data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-200 hover:bg-white/8">🧠  Model</Tabs.Trigger>
+                      <Tabs.Trigger value="general" className="mc-settings-tab-trigger w-full justify-start rounded-lg px-3 py-2 text-[18px] leading-6 bg-transparent data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-200 hover:bg-white/8">⚙️  General</Tabs.Trigger>
+                      <Tabs.Trigger value="model" className="mc-settings-tab-trigger w-full justify-start rounded-lg px-3 py-2 text-[18px] leading-6 bg-transparent data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-200 hover:bg-white/8">🧠  Model</Tabs.Trigger>
 
                       <Text size="1" color="gray" className="px-2 pt-3 uppercase tracking-wide">Channels</Text>
-                      <Tabs.Trigger value="telegram" className="justify-start rounded-lg px-3 py-2 text-[18px] leading-6 bg-transparent data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-200 hover:bg-white/8">✈️  Telegram</Tabs.Trigger>
-                      <Tabs.Trigger value="discord" className="justify-start rounded-lg px-3 py-2 text-[18px] leading-6 bg-transparent data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-200 hover:bg-white/8">💬  Discord</Tabs.Trigger>
+                      <Tabs.Trigger value="telegram" className="mc-settings-tab-trigger w-full justify-start rounded-lg px-3 py-2 text-[18px] leading-6 bg-transparent data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-200 hover:bg-white/8">✈️  Telegram</Tabs.Trigger>
+                      <Tabs.Trigger value="discord" className="mc-settings-tab-trigger w-full justify-start rounded-lg px-3 py-2 text-[18px] leading-6 bg-transparent data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-200 hover:bg-white/8">💬  Discord</Tabs.Trigger>
                       
                       <Text size="1" color="gray" className="px-2 pt-3 uppercase tracking-wide">Integrations</Text>
-                      <Tabs.Trigger value="web" className="justify-start rounded-lg px-3 py-2 text-[18px] leading-6 bg-transparent data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-200 hover:bg-white/8">🌐  Web</Tabs.Trigger>
+                      <Tabs.Trigger value="web" className="mc-settings-tab-trigger w-full justify-start rounded-lg px-3 py-2 text-[18px] leading-6 bg-transparent data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-200 hover:bg-white/8">🌐  Web</Tabs.Trigger>
                     </Tabs.List>
                   </Card>
 
@@ -1141,47 +1208,61 @@ function App() {
                         </Text>
                         <Text size="1" color="gray" className="mt-2 block">working_dir_isolation: chat = isolated workspace per chat; shared = one shared workspace.</Text>
                         <Text size="1" color="gray" className="mt-1 block">max_tokens / max_tool_iterations / max_document_size_mb control response budget and tool loop safety.</Text>
-                        <div className="mt-4 grid grid-cols-1 gap-3">
-                          <TextField.Root
-                            value={String(configDraft.working_dir_isolation || DEFAULT_CONFIG_VALUES.working_dir_isolation)}
-                            onChange={(e) => setConfigField('working_dir_isolation', e.target.value)}
-                            placeholder="working_dir_isolation: chat or shared"
-                          />
-                          <TextField.Root
-                            value={String(configDraft.max_tokens || DEFAULT_CONFIG_VALUES.max_tokens)}
-                            onChange={(e) => setConfigField('max_tokens', e.target.value)}
-                            placeholder="max_tokens: output token limit per request"
-                          />
-                          <TextField.Root
-                            value={String(configDraft.max_tool_iterations || DEFAULT_CONFIG_VALUES.max_tool_iterations)}
-                            onChange={(e) => setConfigField('max_tool_iterations', e.target.value)}
-                            placeholder="max_tool_iterations: max tool loop count"
-                          />
-                          <TextField.Root
-                            value={String(configDraft.max_document_size_mb || DEFAULT_CONFIG_VALUES.max_document_size_mb)}
-                            onChange={(e) => setConfigField('max_document_size_mb', e.target.value)}
-                            placeholder="max_document_size_mb: upload size limit"
-                          />
+                        <div className="mt-4 space-y-3">
+                          <ConfigFieldCard label="working_dir_isolation" description={<>Use <code>chat</code> for per-chat isolation, or <code>shared</code> for one shared workspace.</>}>
+                            <select
+                              className="mt-2 w-full rounded-md border border-[color:var(--mc-border-soft)] bg-transparent px-3 py-2 text-base text-[color:inherit] outline-none focus:border-[color:var(--mc-accent)]"
+                              value={normalizeWorkingDirIsolation(
+                                configDraft.working_dir_isolation || DEFAULT_CONFIG_VALUES.working_dir_isolation,
+                              )}
+                              onChange={(e) => setConfigField('working_dir_isolation', e.target.value)}
+                            >
+                              <option value="chat">chat (per-chat isolated workspace)</option>
+                              <option value="shared">shared (single shared workspace)</option>
+                            </select>
+                          </ConfigFieldCard>
+                          <ConfigFieldCard label="max_tokens" description={<>Maximum output tokens for one model response.</>}>
+                            <TextField.Root
+                              className="mt-2"
+                              value={String(configDraft.max_tokens || DEFAULT_CONFIG_VALUES.max_tokens)}
+                              onChange={(e) => setConfigField('max_tokens', e.target.value)}
+                              placeholder="8192"
+                            />
+                          </ConfigFieldCard>
+                          <ConfigFieldCard label="max_tool_iterations" description={<>Upper bound for tool loop iterations in one request.</>}>
+                            <TextField.Root
+                              className="mt-2"
+                              value={String(configDraft.max_tool_iterations || DEFAULT_CONFIG_VALUES.max_tool_iterations)}
+                              onChange={(e) => setConfigField('max_tool_iterations', e.target.value)}
+                              placeholder="100"
+                            />
+                          </ConfigFieldCard>
+                          <ConfigFieldCard label="max_document_size_mb" description={<>Maximum uploaded file size in MB.</>}>
+                            <TextField.Root
+                              className="mt-2"
+                              value={String(configDraft.max_document_size_mb || DEFAULT_CONFIG_VALUES.max_document_size_mb)}
+                              onChange={(e) => setConfigField('max_document_size_mb', e.target.value)}
+                              placeholder="100"
+                            />
+                          </ConfigFieldCard>
                         </div>
                         <div className="mt-4 grid grid-cols-1 gap-3">
-                          <div className={toggleCardClass} style={toggleCardStyle}>
-                            <Flex justify="between" align="center">
-                              <Text size="2">show_thinking</Text>
-                              <Switch
-                                checked={Boolean(configDraft.show_thinking)}
-                                onCheckedChange={(checked) => setConfigField('show_thinking', checked)}
-                              />
-                            </Flex>
-                          </div>
-                          <div className={toggleCardClass} style={toggleCardStyle}>
-                            <Flex justify="between" align="center">
-                              <Text size="2">web_enabled</Text>
-                              <Switch
-                                checked={Boolean(configDraft.web_enabled)}
-                                onCheckedChange={(checked) => setConfigField('web_enabled', checked)}
-                              />
-                            </Flex>
-                          </div>
+                          <ConfigToggleCard
+                            label="show_thinking"
+                            description={<>Show intermediate reasoning text in responses.</>}
+                            checked={Boolean(configDraft.show_thinking)}
+                            onCheckedChange={(checked) => setConfigField('show_thinking', checked)}
+                            className={toggleCardClass}
+                            style={toggleCardStyle}
+                          />
+                          <ConfigToggleCard
+                            label="web_enabled"
+                            description={<>Enable built-in Web UI and API endpoint.</>}
+                            checked={Boolean(configDraft.web_enabled)}
+                            onCheckedChange={(checked) => setConfigField('web_enabled', checked)}
+                            className={toggleCardClass}
+                            style={toggleCardStyle}
+                          />
                         </div>
                       </div>
                     </Tabs.Content>
@@ -1194,43 +1275,56 @@ function App() {
                         </Text>
                         <Text size="1" color="gray" className="mt-2 block">llm_provider selects routing preset; model is the exact model id sent to provider API.</Text>
                         <Text size="1" color="gray" className="mt-1 block">For custom providers set llm_base_url. Keep api_key empty only if your deployment handles auth elsewhere.</Text>
-                        <div className="mt-3 grid grid-cols-1 gap-3">
-                          <Select.Root
-                            value={String(configDraft.llm_provider || DEFAULT_CONFIG_VALUES.llm_provider)}
-                            onValueChange={(value) => setConfigField('llm_provider', value)}
-                          >
-                            <Select.Trigger placeholder="Select provider" />
-                            <Select.Content>
-                              {providerOptions.map((provider) => (
-                                <Select.Item key={provider} value={provider}>
-                                  {provider}
-                                </Select.Item>
-                              ))}
-                            </Select.Content>
-                          </Select.Root>
+                        <div className="mt-4 space-y-3">
+                          <ConfigFieldCard label="llm_provider" description={<>Select provider preset for request routing and defaults.</>}>
+                            <div className="mt-2">
+                              <Select.Root
+                                value={String(configDraft.llm_provider || DEFAULT_CONFIG_VALUES.llm_provider)}
+                                onValueChange={(value) => setConfigField('llm_provider', value)}
+                              >
+                                <Select.Trigger className="w-full mc-select-trigger-full" placeholder="Select provider" />
+                                <Select.Content>
+                                  {providerOptions.map((provider) => (
+                                    <Select.Item key={provider} value={provider}>
+                                      {provider}
+                                    </Select.Item>
+                                  ))}
+                                </Select.Content>
+                              </Select.Root>
+                            </div>
+                          </ConfigFieldCard>
 
-                          <TextField.Root
-                            value={String(configDraft.model || defaultModelForProvider(String(configDraft.llm_provider || DEFAULT_CONFIG_VALUES.llm_provider)))}
-                            onChange={(e) => setConfigField('model', e.target.value)}
-                            placeholder="model id, e.g. claude-sonnet-4-5-20250929"
-                          />
-                          {modelOptions.length > 0 ? (
-                            <Text size="1" color="gray">Suggested: {modelOptions.join(' / ')}</Text>
-                          ) : null}
+                          <ConfigFieldCard label="model" description={<>Exact model id to use for requests.</>}>
+                            <TextField.Root
+                              className="mt-2"
+                              value={String(configDraft.model || defaultModelForProvider(String(configDraft.llm_provider || DEFAULT_CONFIG_VALUES.llm_provider)))}
+                              onChange={(e) => setConfigField('model', e.target.value)}
+                              placeholder="claude-sonnet-4-5-20250929"
+                            />
+                            {modelOptions.length > 0 ? (
+                              <Text size="1" color="gray" className="mt-2 block">Suggested: {modelOptions.join(' / ')}</Text>
+                            ) : null}
+                          </ConfigFieldCard>
 
                           {currentProvider === 'custom' ? (
-                            <TextField.Root
-                              value={String(configDraft.llm_base_url || '')}
-                              onChange={(e) => setConfigField('llm_base_url', e.target.value)}
-                              placeholder="llm_base_url"
-                            />
+                            <ConfigFieldCard label="llm_base_url" description={<>Base URL for OpenAI-compatible custom provider endpoint.</>}>
+                              <TextField.Root
+                                className="mt-2"
+                                value={String(configDraft.llm_base_url || '')}
+                                onChange={(e) => setConfigField('llm_base_url', e.target.value)}
+                                placeholder="https://api.example.com/v1"
+                              />
+                          </ConfigFieldCard>
                           ) : null}
 
-                          <TextField.Root
-                            value={String(configDraft.api_key || '')}
-                            onChange={(e) => setConfigField('api_key', e.target.value)}
-                            placeholder="api_key (leave blank to keep existing)"
-                          />
+                          <ConfigFieldCard label="api_key" description={<>Provider API key. Leave blank to keep current secret unchanged.</>}>
+                            <TextField.Root
+                              className="mt-2"
+                              value={String(configDraft.api_key || '')}
+                              onChange={(e) => setConfigField('api_key', e.target.value)}
+                              placeholder="sk-..."
+                            />
+                          </ConfigFieldCard>
                         </div>
                       </div>
                     </Tabs.Content>
@@ -1238,30 +1332,35 @@ function App() {
                     <Tabs.Content value="telegram">
                       <div className={sectionCardClass} style={sectionCardStyle}>
                         <Text size="3" weight="bold">Telegram</Text>
-                        <Card className="mt-3 p-3">
-                          <Text size="2" weight="bold">Setup Steps</Text>
-                          <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-slate-400">
-                            <li>Open Telegram and chat with <code>@BotFather</code>.</li>
-                            <li>Run <code>/newbot</code>, set name and username (must end with <code>bot</code>).</li>
-                            <li>Copy the bot token and paste below.</li>
-                            <li>Set <code>bot_username</code> without <code>@</code>.</li>
-                            <li>In groups, mention the bot to trigger replies.</li>
-                          </ol>
-                        </Card>
+                        <ConfigStepsCard
+                          steps={[
+                            <>Open Telegram and chat with <code>@BotFather</code>.</>,
+                            <>Run <code>/newbot</code>, set name and username (must end with <code>bot</code>).</>,
+                            <>Copy the bot token and paste below.</>,
+                            <>Set <code>bot_username</code> without <code>@</code>.</>,
+                            <>In groups, mention the bot to trigger replies.</>,
+                          ]}
+                        />
                         <Text size="1" color="gray" className="mt-3 block">
                           Required: bot token and username. Leave token unchanged if already configured.
                         </Text>
-                        <div className="mt-4 grid grid-cols-1 gap-3">
-                          <TextField.Root
-                            value={String(configDraft.telegram_bot_token || '')}
-                            onChange={(e) => setConfigField('telegram_bot_token', e.target.value)}
-                            placeholder="telegram_bot_token from BotFather"
-                          />
-                          <TextField.Root
-                            value={String(configDraft.bot_username || '')}
-                            onChange={(e) => setConfigField('bot_username', e.target.value)}
-                            placeholder="bot_username (without @), used for group mentions"
-                          />
+                        <div className="mt-4 space-y-3">
+                          <ConfigFieldCard label="telegram_bot_token" description={<>BotFather token for sending and receiving Telegram messages. Leave blank to keep current secret unchanged.</>}>
+                            <TextField.Root
+                              className="mt-2"
+                              value={String(configDraft.telegram_bot_token || '')}
+                              onChange={(e) => setConfigField('telegram_bot_token', e.target.value)}
+                              placeholder="123456789:AA..."
+                            />
+                          </ConfigFieldCard>
+                          <ConfigFieldCard label="bot_username" description={<>Telegram bot username without <code>@</code>, used for group mention trigger.</>}>
+                            <TextField.Root
+                              className="mt-2"
+                              value={String(configDraft.bot_username || '')}
+                              onChange={(e) => setConfigField('bot_username', e.target.value)}
+                              placeholder="my_microclaw_bot"
+                            />
+                          </ConfigFieldCard>
                         </div>
                       </div>
                     </Tabs.Content>
@@ -1269,30 +1368,35 @@ function App() {
                     <Tabs.Content value="discord">
                       <div className={sectionCardClass} style={sectionCardStyle}>
                         <Text size="3" weight="bold">Discord</Text>
-                        <Card className="mt-3 p-3">
-                          <Text size="2" weight="bold">Setup Steps</Text>
-                          <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-slate-400">
-                            <li>Open Discord Developer Portal and create an application + bot.</li>
-                            <li>Enable <code>Message Content Intent</code> under Bot settings.</li>
-                            <li>Invite bot with scopes/permissions: bot, View Channels, Send Messages, Read Message History.</li>
-                            <li>Paste bot token below.</li>
-                            <li>Optional: limit handling to specific channel IDs.</li>
-                          </ol>
-                        </Card>
+                        <ConfigStepsCard
+                          steps={[
+                            <>Open Discord Developer Portal and create an application + bot.</>,
+                            <>Enable <code>Message Content Intent</code> under Bot settings.</>,
+                            <>Invite bot with scopes/permissions: bot, View Channels, Send Messages, Read Message History.</>,
+                            <>Paste bot token below.</>,
+                            <>Optional: limit handling to specific channel IDs.</>,
+                          ]}
+                        />
                         <Text size="1" color="gray" className="mt-3 block">
                           Required: bot token. Optional: restrict handling to listed channel IDs.
                         </Text>
-                        <div className="mt-4 grid grid-cols-1 gap-3">
-                          <TextField.Root
-                            value={String(configDraft.discord_bot_token || '')}
-                            onChange={(e) => setConfigField('discord_bot_token', e.target.value)}
-                            placeholder="discord_bot_token from Discord Developer Portal"
-                          />
-                          <TextField.Root
-                            value={String(configDraft.discord_allowed_channels_csv || '')}
-                            onChange={(e) => setConfigField('discord_allowed_channels_csv', e.target.value)}
-                            placeholder="discord_allowed_channels: comma-separated channel IDs (optional)"
-                          />
+                        <div className="mt-4 space-y-3">
+                          <ConfigFieldCard label="discord_bot_token" description={<>Discord bot token from Developer Portal. Leave blank to keep current secret unchanged.</>}>
+                            <TextField.Root
+                              className="mt-2"
+                              value={String(configDraft.discord_bot_token || '')}
+                              onChange={(e) => setConfigField('discord_bot_token', e.target.value)}
+                              placeholder="MTAx..."
+                            />
+                          </ConfigFieldCard>
+                          <ConfigFieldCard label="discord_allowed_channels" description={<>Optional allowlist. Only listed channel IDs can trigger the bot.</>}>
+                            <TextField.Root
+                              className="mt-2"
+                              value={String(configDraft.discord_allowed_channels_csv || '')}
+                              onChange={(e) => setConfigField('discord_allowed_channels_csv', e.target.value)}
+                              placeholder="1234567890, 9876543210"
+                            />
+                          </ConfigFieldCard>
                         </div>
                       </div>
                     </Tabs.Content>
@@ -1300,50 +1404,60 @@ function App() {
                     <Tabs.Content value="web">
                       <div className={sectionCardClass} style={sectionCardStyle}>
                         <Text size="3" weight="bold">Web</Text>
-                        <Card className="mt-3 p-3">
-                          <Text size="2" weight="bold">Setup Steps</Text>
-                          <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-slate-400">
-                            <li>Keep <code>web_enabled</code> on for local UI access.</li>
-                            <li>Use <code>127.0.0.1</code> for local-only host, or set LAN host explicitly.</li>
-                            <li>Choose web port (default <code>10961</code>).</li>
-                          </ol>
-                        </Card>
+                        <ConfigStepsCard
+                          steps={[
+                            <>Keep <code>web_enabled</code> on for local UI access.</>,
+                            <>Use <code>127.0.0.1</code> for local-only host, or set LAN host explicitly.</>,
+                            <>Choose web port (default <code>10961</code>).</>,
+                          ]}
+                        />
                         <Text size="1" color="gray" className="mt-3 block">
                           For local only, keep host as 127.0.0.1. Use 0.0.0.0 only behind trusted network controls.
                         </Text>
-                        <div className="mt-4 grid grid-cols-1 gap-3">
-                          <TextField.Root
-                            value={String(configDraft.web_host || DEFAULT_CONFIG_VALUES.web_host)}
-                            onChange={(e) => setConfigField('web_host', e.target.value)}
-                            placeholder="web_host, e.g. 127.0.0.1 or 0.0.0.0"
-                          />
-                          <TextField.Root
-                            value={String(configDraft.web_port || DEFAULT_CONFIG_VALUES.web_port)}
-                            onChange={(e) => setConfigField('web_port', e.target.value)}
-                            placeholder="web_port, default 10961"
-                          />
+                        <div className="mt-4 space-y-3">
+                          <ConfigFieldCard label="web_host" description={<>Use <code>127.0.0.1</code> for local-only. Use <code>0.0.0.0</code> only when intentionally exposing on LAN.</>}>
+                            <TextField.Root
+                              className="mt-2"
+                              value={String(configDraft.web_host || DEFAULT_CONFIG_VALUES.web_host)}
+                              onChange={(e) => setConfigField('web_host', e.target.value)}
+                              placeholder="127.0.0.1"
+                            />
+                          </ConfigFieldCard>
+                          <ConfigFieldCard label="web_port" description={<>HTTP port for Web UI and API endpoint.</>}>
+                            <TextField.Root
+                              className="mt-2"
+                              value={String(configDraft.web_port || DEFAULT_CONFIG_VALUES.web_port)}
+                              onChange={(e) => setConfigField('web_port', e.target.value)}
+                              placeholder="10961"
+                            />
+                          </ConfigFieldCard>
                         </div>
                       </div>
                     </Tabs.Content>
 
-                    {saveStatus ? (
-                      <Text size="2" color={saveStatus.startsWith('Save failed') ? 'red' : 'green'} className="mt-3 block">
-                        {saveStatus}
-                      </Text>
-                    ) : null}
-
-                    <Flex justify="end" gap="2" mt="3">
-                      <Dialog.Close>
-                        <Button variant="soft">Close</Button>
-                      </Dialog.Close>
-                      <Button onClick={() => void saveConfigChanges()}>Save</Button>
-                    </Flex>
                   </div>
                 </div>
-              </Tabs.Root>
-            ) : (
-              <Text size="2" color="gray">Loading...</Text>
-            )}
+                </Tabs.Root>
+              ) : (
+                <Text size="2" color="gray">Loading...</Text>
+              )}
+            </div>
+
+            <div className="mt-3 flex items-center justify-between border-t border-[color:var(--mc-border-soft)] pt-3">
+              {saveStatus ? (
+                <Text size="2" color={saveStatus.startsWith('Save failed') ? 'red' : 'green'}>
+                  {saveStatus}
+                </Text>
+              ) : (
+                <span />
+              )}
+              <Flex justify="end" gap="2">
+                <Dialog.Close>
+                  <Button variant="soft">Close</Button>
+                </Dialog.Close>
+                <Button onClick={() => void saveConfigChanges()}>Save</Button>
+              </Flex>
+            </div>
           </Dialog.Content>
         </Dialog.Root>
       </div>

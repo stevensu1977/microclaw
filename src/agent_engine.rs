@@ -225,7 +225,12 @@ pub(crate) async fn process_with_agent_impl(
 
     // Compact if messages exceed threshold
     if messages.len() > state.config.max_session_messages {
-        archive_conversation(&state.config.data_dir, chat_id, &messages);
+        archive_conversation(
+            &state.config.data_dir,
+            context.caller_channel,
+            chat_id,
+            &messages,
+        );
         messages = compact_messages(
             state.llm.as_ref(),
             &messages,
@@ -305,12 +310,23 @@ pub(crate) async fn process_with_agent_impl(
             } else {
                 strip_thinking(&text)
             };
+            let final_text = if display_text.trim().is_empty() {
+                if stop_reason == "max_tokens" {
+                    "I reached the model output limit before producing a visible reply. Please ask me to continue."
+                        .to_string()
+                } else {
+                    "I processed your request but produced an empty visible reply. Please ask me to retry."
+                        .to_string()
+                }
+            } else {
+                display_text
+            };
             if let Some(tx) = event_tx {
                 let _ = tx.send(AgentEvent::FinalResponse {
-                    text: display_text.clone(),
+                    text: final_text.clone(),
                 });
             }
-            return Ok(display_text);
+            return Ok(final_text);
         }
 
         if stop_reason == "tool_use" {
@@ -645,11 +661,17 @@ pub(crate) fn strip_images_for_session(messages: &mut [Message]) {
 }
 
 /// Archive the full conversation to a markdown file before compaction.
-/// Saved to `<data_dir>/groups/<chat_id>/conversations/<timestamp>.md`.
-pub fn archive_conversation(data_dir: &str, chat_id: i64, messages: &[Message]) {
+/// Saved to `<data_dir>/groups/<channel>/<chat_id>/conversations/<timestamp>.md`.
+pub fn archive_conversation(data_dir: &str, channel: &str, chat_id: i64, messages: &[Message]) {
     let now = chrono::Utc::now().format("%Y%m%d-%H%M%S");
+    let channel_dir = if channel.trim().is_empty() {
+        "unknown"
+    } else {
+        channel.trim()
+    };
     let dir = std::path::PathBuf::from(data_dir)
         .join("groups")
+        .join(channel_dir)
         .join(chat_id.to_string())
         .join("conversations");
 
@@ -714,11 +736,13 @@ async fn compact_messages(
         content: MessageContent::Text(format!("{summarize_prompt}\n\n---\n\n{summary_input}")),
     }];
 
-    let summary = match llm
-        .send_message("You are a helpful summarizer.", summarize_messages, None)
-        .await
+    let summary = match tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        llm.send_message("You are a helpful summarizer.", summarize_messages, None),
+    )
+    .await
     {
-        Ok(response) => response
+        Ok(Ok(response)) => response
             .content
             .iter()
             .filter_map(|b| match b {
@@ -727,9 +751,14 @@ async fn compact_messages(
             })
             .collect::<Vec<_>>()
             .join(""),
-        Err(e) => {
+        Ok(Err(e)) => {
             tracing::warn!("Compaction summarization failed: {e}, falling back to truncation");
-            // Fallback: just keep recent messages
+            return recent_messages.to_vec();
+        }
+        Err(_) => {
+            tracing::warn!(
+                "Compaction summarization timed out after 60s, falling back to truncation"
+            );
             return recent_messages.to_vec();
         }
     };
