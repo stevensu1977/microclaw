@@ -4,7 +4,6 @@ pub mod channel;
 pub mod channels;
 pub mod claude;
 pub mod config;
-pub mod config_wizard;
 pub mod db;
 pub mod doctor;
 pub mod error;

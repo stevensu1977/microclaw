@@ -221,7 +221,7 @@ impl Config {
 
         // No config file found at all
         Err(MicroClawError::Config(
-            "No microclaw.config.yaml found. Run `microclaw config` to create one.".into(),
+            "No microclaw.config.yaml found. Run `microclaw setup` to create one.".into(),
         ))
     }
 

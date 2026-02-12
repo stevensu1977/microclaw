@@ -1,8 +1,7 @@
 use microclaw::config::Config;
 use microclaw::error::MicroClawError;
 use microclaw::{
-    builtin_skills, config_wizard, db, doctor, gateway, logging, mcp, memory, runtime, setup,
-    skills,
+    builtin_skills, db, doctor, gateway, logging, mcp, memory, runtime, setup, skills,
 };
 use std::path::Path;
 use tracing::info;
@@ -11,101 +10,29 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn print_help() {
     println!(
-        r#"MicroClaw v{VERSION} — Agentic AI assistant for Telegram, WhatsApp & Discord
+        r#"MicroClaw v{VERSION}
 
-USAGE:
-    microclaw <COMMAND>
+Usage:
+  microclaw <command>
 
-COMMANDS:
-    start       Start the bot (Telegram + optional WhatsApp/Discord)
-    gateway     Manage gateway service (install/uninstall/start/stop/status/logs)
-    config      Run interactive Q&A config flow (recommended)
-    doctor      Run preflight diagnostics (cross-platform)
-    setup       Run interactive setup wizard
-    version     Show version information
-    help        Show this help message
+Commands:
+  start      Start runtime (enabled channels)
+  setup      Full-screen setup wizard
+  doctor     Preflight diagnostics
+  gateway    Manage service (install/start/stop/status/logs)
+  version    Show version
+  help       Show this help
 
-FEATURES:
-    - Agentic tool use (bash, files, search, memory)
-    - Web search and page fetching
-    - Image/photo understanding (Claude Vision)
-    - Voice message transcription (OpenAI Whisper)
-    - Scheduled/recurring tasks with timezone support
-    - Task execution history/run logs
-    - Chat export to markdown
-    - Mid-conversation message sending
-    - Group chat catch-up (reads all messages since last reply)
-    - Group allowlist (restrict which groups can use the bot)
-    - Continuous typing indicator
-    - MCP (Model Context Protocol) server integration
-    - WhatsApp Cloud API support
-    - Discord bot support
-    - Sensitive path blacklisting for file tools
+Quick Start:
+  1) microclaw setup
+  2) microclaw doctor
+  3) microclaw start
 
-SETUP:
-    1. Run: microclaw config
-       (or run microclaw start and follow auto-config on first launch)
-    2. Edit microclaw.config.yaml with required values:
+Channel requirement:
+  Enable at least one channel: Telegram / Discord / WhatsApp / Web UI.
 
-       api_key               LLM API key (optional when llm_provider=ollama)
-       Enable at least one channel: Telegram, Discord, WhatsApp, or Web UI
-
-    3. Run: microclaw start
-
-CONFIG FILE (microclaw.config.yaml):
-    MicroClaw reads configuration from microclaw.config.yaml (or microclaw.config.yml).
-    Override the path with MICROCLAW_CONFIG env var.
-    See microclaw.config.example.yaml for all available fields.
-
-    Core fields:
-      llm_provider           Provider preset (default: anthropic)
-      api_key                LLM API key (optional when llm_provider=ollama)
-      model                  Model name (auto-detected from provider if empty)
-      llm_base_url           Custom base URL (optional)
-
-    Runtime:
-      data_dir               Data root (runtime in ./microclaw.data/runtime, skills in ./microclaw.data/skills)
-      working_dir            Default tool working directory (default: ./tmp)
-      working_dir_isolation  Tool working-dir mode: shared or chat (default: chat)
-      max_tokens             Max tokens per response (default: 8192)
-      max_tool_iterations    Max tool loop iterations (default: 100)
-      max_history_messages   Chat history context size (default: 50)
-      openai_api_key         OpenAI key for voice transcription (optional)
-      timezone               IANA timezone for scheduling (default: UTC)
-
-    Telegram (optional):
-      telegram_bot_token         Telegram bot token from @BotFather
-      bot_username               Telegram mention username (without @)
-      allowed_groups             Group allowlist by chat ID (empty = all groups)
-
-    WhatsApp (optional):
-      whatsapp_access_token       Meta API access token
-      whatsapp_phone_number_id    Phone number ID from Meta dashboard
-      whatsapp_verify_token       Webhook verification token
-      whatsapp_webhook_port       Webhook server port (default: 8080)
-
-    Discord (optional):
-      discord_bot_token           Discord bot token from Discord Developer Portal
-      discord_allowed_channels    List of channel IDs to respond in (empty = all)
-
-MCP (optional):
-    Place a mcp.json file in data_dir (default: ./microclaw.data) to connect MCP servers.
-    See https://modelcontextprotocol.io for details.
-
-EXAMPLES:
-    microclaw start               Start the bot
-    microclaw gateway install     Install and enable gateway service
-    microclaw gateway status      Show gateway service status
-    microclaw gateway logs 100    Show last 100 lines of gateway logs
-    microclaw config              Run interactive Q&A config flow
-    microclaw doctor              Run preflight diagnostics
-    microclaw doctor --json       Output diagnostics as JSON
-    microclaw setup               Run full-screen setup wizard
-    microclaw version             Show version
-    microclaw help                Show this message
-
-ABOUT:
-    https://microclaw.ai"#
+More:
+  https://microclaw.ai"#
     );
 }
 
@@ -198,15 +125,6 @@ async fn main() -> anyhow::Result<()> {
             }
             return Ok(());
         }
-        Some("config") => {
-            let saved = config_wizard::run_config_wizard()?;
-            if saved {
-                println!("Config saved");
-            } else {
-                println!("Config canceled");
-            }
-            return Ok(());
-        }
         Some("doctor") => {
             doctor::run_cli(&args[2..])?;
             return Ok(());
@@ -230,11 +148,11 @@ async fn main() -> anyhow::Result<()> {
         Ok(c) => c,
         Err(MicroClawError::Config(e)) => {
             eprintln!("Config missing/invalid: {e}");
-            eprintln!("Launching interactive config...");
-            let saved = config_wizard::run_config_wizard()?;
+            eprintln!("Launching setup wizard...");
+            let saved = setup::run_setup_wizard()?;
             if !saved {
                 return Err(anyhow::anyhow!(
-                    "config canceled and config is still incomplete"
+                    "setup canceled and config is still incomplete"
                 ));
             }
             Config::load()?

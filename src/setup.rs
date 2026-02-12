@@ -264,22 +264,70 @@ impl SetupApp {
             .map(|p| p.default_base_url)
             .unwrap_or("");
         let llm_api_key = existing.get("LLM_API_KEY").cloned().unwrap_or_default();
+        let enabled_channels = existing
+            .get("ENABLED_CHANNELS")
+            .cloned()
+            .unwrap_or_default();
 
-        Self {
+        let mut app = Self {
             fields: vec![
+                Field {
+                    key: "ENABLED_CHANNELS",
+                    label: "Enabled channels (csv, empty = setup later)",
+                    value: enabled_channels,
+                    required: true,
+                    secret: false,
+                },
                 Field {
                     key: "TELEGRAM_BOT_TOKEN",
                     label: "Telegram bot token",
                     value: existing.get("TELEGRAM_BOT_TOKEN").cloned().unwrap_or_default(),
-                    required: true,
+                    required: false,
                     secret: true,
                 },
                 Field {
                     key: "BOT_USERNAME",
-                    label: "Bot username (without @)",
+                    label: "Telegram username (no @)",
                     value: existing.get("BOT_USERNAME").cloned().unwrap_or_default(),
-                    required: true,
+                    required: false,
                     secret: false,
+                },
+                Field {
+                    key: "DISCORD_BOT_TOKEN",
+                    label: "Discord bot token",
+                    value: existing.get("DISCORD_BOT_TOKEN").cloned().unwrap_or_default(),
+                    required: false,
+                    secret: true,
+                },
+                Field {
+                    key: "WHATSAPP_ACCESS_TOKEN",
+                    label: "WhatsApp access token",
+                    value: existing
+                        .get("WHATSAPP_ACCESS_TOKEN")
+                        .cloned()
+                        .unwrap_or_default(),
+                    required: false,
+                    secret: true,
+                },
+                Field {
+                    key: "WHATSAPP_PHONE_NUMBER_ID",
+                    label: "WhatsApp phone number id",
+                    value: existing
+                        .get("WHATSAPP_PHONE_NUMBER_ID")
+                        .cloned()
+                        .unwrap_or_default(),
+                    required: false,
+                    secret: false,
+                },
+                Field {
+                    key: "WHATSAPP_VERIFY_TOKEN",
+                    label: "WhatsApp verify token",
+                    value: existing
+                        .get("WHATSAPP_VERIFY_TOKEN")
+                        .cloned()
+                        .unwrap_or_default(),
+                    required: false,
+                    secret: true,
                 },
                 Field {
                     key: "LLM_PROVIDER",
@@ -298,14 +346,20 @@ impl SetupApp {
                 Field {
                     key: "LLM_MODEL",
                     label: "LLM model",
-                    value: existing.get("LLM_MODEL").cloned().unwrap_or_else(|| default_model.into()),
+                    value: existing
+                        .get("LLM_MODEL")
+                        .cloned()
+                        .unwrap_or_else(|| default_model.into()),
                     required: false,
                     secret: false,
                 },
                 Field {
                     key: "LLM_BASE_URL",
                     label: "LLM base URL (optional)",
-                    value: existing.get("LLM_BASE_URL").cloned().unwrap_or_else(|| default_base_url.to_string()),
+                    value: existing
+                        .get("LLM_BASE_URL")
+                        .cloned()
+                        .unwrap_or_else(|| default_base_url.to_string()),
                     required: false,
                     secret: false,
                 },
@@ -346,7 +400,11 @@ impl SetupApp {
             completed: false,
             backup_path: None,
             completion_summary: Vec::new(),
-        }
+        };
+
+        app.fields
+            .sort_by_key(|field| Self::field_display_order(field.key));
+        app
     }
 
     /// Load existing config values from microclaw.config.yaml/.yml.
@@ -363,8 +421,55 @@ impl SetupApp {
             if let Ok(content) = fs::read_to_string(path) {
                 if let Ok(config) = serde_yaml::from_str::<crate::config::Config>(&content) {
                     let mut map = HashMap::new();
+                    let mut enabled = Vec::new();
+                    if !config.telegram_bot_token.trim().is_empty() {
+                        enabled.push("telegram");
+                    }
+                    if config
+                        .discord_bot_token
+                        .as_deref()
+                        .map(|v| !v.trim().is_empty())
+                        .unwrap_or(false)
+                    {
+                        enabled.push("discord");
+                    }
+                    if config
+                        .whatsapp_access_token
+                        .as_deref()
+                        .map(|v| !v.trim().is_empty())
+                        .unwrap_or(false)
+                        && config
+                            .whatsapp_phone_number_id
+                            .as_deref()
+                            .map(|v| !v.trim().is_empty())
+                            .unwrap_or(false)
+                        && config
+                            .whatsapp_verify_token
+                            .as_deref()
+                            .map(|v| !v.trim().is_empty())
+                            .unwrap_or(false)
+                    {
+                        enabled.push("whatsapp");
+                    }
+                    map.insert("ENABLED_CHANNELS".into(), enabled.join(","));
                     map.insert("TELEGRAM_BOT_TOKEN".into(), config.telegram_bot_token);
                     map.insert("BOT_USERNAME".into(), config.bot_username);
+                    map.insert(
+                        "DISCORD_BOT_TOKEN".into(),
+                        config.discord_bot_token.unwrap_or_default(),
+                    );
+                    map.insert(
+                        "WHATSAPP_ACCESS_TOKEN".into(),
+                        config.whatsapp_access_token.unwrap_or_default(),
+                    );
+                    map.insert(
+                        "WHATSAPP_PHONE_NUMBER_ID".into(),
+                        config.whatsapp_phone_number_id.unwrap_or_default(),
+                    );
+                    map.insert(
+                        "WHATSAPP_VERIFY_TOKEN".into(),
+                        config.whatsapp_verify_token.unwrap_or_default(),
+                    );
                     map.insert("LLM_PROVIDER".into(), config.llm_provider);
                     map.insert("LLM_API_KEY".into(), config.api_key);
                     if !config.model.is_empty() {
@@ -422,6 +527,25 @@ impl SetupApp {
         out
     }
 
+    fn enabled_channels(&self) -> Vec<String> {
+        let raw = self.field_value("ENABLED_CHANNELS");
+        let mut out = Vec::new();
+        for part in raw.split(',') {
+            let p = part.trim().to_lowercase();
+            if !matches!(p.as_str(), "telegram" | "discord" | "whatsapp") {
+                continue;
+            }
+            if !out.iter().any(|v| v == &p) {
+                out.push(p);
+            }
+        }
+        out
+    }
+
+    fn channel_enabled(&self, channel: &str) -> bool {
+        self.enabled_channels().iter().any(|c| c == channel)
+    }
+
     fn validate_local(&self) -> Result<(), MicroClawError> {
         for field in &self.fields {
             if field.key == "LLM_API_KEY" && self.field_value("LLM_PROVIDER") == "ollama" {
@@ -432,16 +556,49 @@ impl SetupApp {
             }
         }
 
+        if self.channel_enabled("telegram") {
+            if self.field_value("TELEGRAM_BOT_TOKEN").is_empty() {
+                return Err(MicroClawError::Config(
+                    "TELEGRAM_BOT_TOKEN is required when telegram is enabled".into(),
+                ));
+            }
+            let username = self.field_value("BOT_USERNAME");
+            if username.is_empty() {
+                return Err(MicroClawError::Config(
+                    "BOT_USERNAME is required when telegram is enabled".into(),
+                ));
+            }
+            if username.starts_with('@') {
+                return Err(MicroClawError::Config(
+                    "BOT_USERNAME should not include '@'".into(),
+                ));
+            }
+        }
+
+        if self.channel_enabled("discord") && self.field_value("DISCORD_BOT_TOKEN").is_empty() {
+            return Err(MicroClawError::Config(
+                "DISCORD_BOT_TOKEN is required when discord is enabled".into(),
+            ));
+        }
+
+        if self.channel_enabled("whatsapp") {
+            for key in [
+                "WHATSAPP_ACCESS_TOKEN",
+                "WHATSAPP_PHONE_NUMBER_ID",
+                "WHATSAPP_VERIFY_TOKEN",
+            ] {
+                if self.field_value(key).is_empty() {
+                    return Err(MicroClawError::Config(format!(
+                        "{} is required when whatsapp is enabled",
+                        key
+                    )));
+                }
+            }
+        }
+
         let provider = self.field_value("LLM_PROVIDER");
         if provider.is_empty() {
             return Err(MicroClawError::Config("LLM_PROVIDER is required".into()));
-        }
-
-        let username = self.field_value("BOT_USERNAME");
-        if username.starts_with('@') {
-            return Err(MicroClawError::Config(
-                "BOT_USERNAME should not include '@'".into(),
-            ));
         }
 
         let timezone = self.field_value("TIMEZONE");
@@ -476,6 +633,7 @@ impl SetupApp {
     }
 
     fn validate_online(&self) -> Result<Vec<String>, MicroClawError> {
+        let tg_enabled = self.channel_enabled("telegram");
         let tg_token = self.field_value("TELEGRAM_BOT_TOKEN");
         let env_username = self
             .field_value("BOT_USERNAME")
@@ -487,6 +645,7 @@ impl SetupApp {
         let model = self.field_value("LLM_MODEL");
         std::thread::spawn(move || {
             perform_online_validation(
+                tg_enabled,
                 &tg_token,
                 &env_username,
                 &provider,
@@ -678,7 +837,14 @@ impl SetupApp {
     fn default_value_for_field(&self, key: &str) -> String {
         let provider = self.field_value("LLM_PROVIDER");
         match key {
-            "TELEGRAM_BOT_TOKEN" | "BOT_USERNAME" | "LLM_API_KEY" => String::new(),
+            "ENABLED_CHANNELS" => String::new(),
+            "TELEGRAM_BOT_TOKEN"
+            | "BOT_USERNAME"
+            | "DISCORD_BOT_TOKEN"
+            | "WHATSAPP_ACCESS_TOKEN"
+            | "WHATSAPP_PHONE_NUMBER_ID"
+            | "WHATSAPP_VERIFY_TOKEN"
+            | "LLM_API_KEY" => String::new(),
             "LLM_PROVIDER" => "anthropic".into(),
             "LLM_MODEL" => default_model_for_provider(&provider).into(),
             "LLM_BASE_URL" => find_provider_preset(&provider)
@@ -708,13 +874,43 @@ impl SetupApp {
         }
     }
 
-    fn current_section(&self) -> &'static str {
-        match self.selected {
-            0..=1 => "Telegram",
-            2..=5 => "LLM",
-            6..=8 => "Runtime",
+    fn section_for_key(key: &str) -> &'static str {
+        match key {
+            "DATA_DIR" | "TIMEZONE" | "WORKING_DIR" => "App",
+            "LLM_PROVIDER" | "LLM_API_KEY" | "LLM_MODEL" | "LLM_BASE_URL" => "Model",
+            "ENABLED_CHANNELS"
+            | "TELEGRAM_BOT_TOKEN"
+            | "BOT_USERNAME"
+            | "DISCORD_BOT_TOKEN"
+            | "WHATSAPP_ACCESS_TOKEN"
+            | "WHATSAPP_PHONE_NUMBER_ID"
+            | "WHATSAPP_VERIFY_TOKEN" => "Channel",
             _ => "Setup",
         }
+    }
+
+    fn field_display_order(key: &str) -> usize {
+        match key {
+            "DATA_DIR" => 0,
+            "TIMEZONE" => 1,
+            "WORKING_DIR" => 2,
+            "LLM_PROVIDER" => 10,
+            "LLM_API_KEY" => 11,
+            "LLM_MODEL" => 12,
+            "LLM_BASE_URL" => 13,
+            "ENABLED_CHANNELS" => 20,
+            "TELEGRAM_BOT_TOKEN" => 21,
+            "BOT_USERNAME" => 22,
+            "DISCORD_BOT_TOKEN" => 23,
+            "WHATSAPP_ACCESS_TOKEN" => 24,
+            "WHATSAPP_PHONE_NUMBER_ID" => 25,
+            "WHATSAPP_VERIFY_TOKEN" => 26,
+            _ => usize::MAX,
+        }
+    }
+
+    fn current_section(&self) -> &'static str {
+        Self::section_for_key(self.selected_field().key)
     }
 
     fn progress_bar(&self, width: usize) -> String {
@@ -734,6 +930,7 @@ impl SetupApp {
 }
 
 fn perform_online_validation(
+    telegram_enabled: bool,
     tg_token: &str,
     env_username: &str,
     provider: &str,
@@ -746,29 +943,36 @@ fn perform_online_validation(
         .timeout(Duration::from_secs(30))
         .build()?;
 
-    // --- Telegram validation ---
-    let tg_resp: serde_json::Value = client
-        .get(format!("https://api.telegram.org/bot{tg_token}/getMe"))
-        .send()?
-        .json()?;
-    let ok = tg_resp.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
-    if !ok {
-        return Err(MicroClawError::Config(
-            "Telegram getMe failed (check TELEGRAM_BOT_TOKEN)".into(),
-        ));
-    }
-    let actual_username = tg_resp
-        .get("result")
-        .and_then(|r| r.get("username"))
-        .and_then(|u| u.as_str())
-        .unwrap_or_default()
-        .to_string();
-    if !env_username.is_empty() && !actual_username.is_empty() && env_username != actual_username {
-        checks.push(format!(
-            "Telegram OK (token user={actual_username}, configured={env_username})"
-        ));
+    // --- Telegram validation (optional) ---
+    if telegram_enabled {
+        let tg_resp: serde_json::Value = client
+            .get(format!("https://api.telegram.org/bot{tg_token}/getMe"))
+            .send()?
+            .json()?;
+        let ok = tg_resp.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+        if !ok {
+            return Err(MicroClawError::Config(
+                "Telegram getMe failed (check TELEGRAM_BOT_TOKEN)".into(),
+            ));
+        }
+        let actual_username = tg_resp
+            .get("result")
+            .and_then(|r| r.get("username"))
+            .and_then(|u| u.as_str())
+            .unwrap_or_default()
+            .to_string();
+        if !env_username.is_empty()
+            && !actual_username.is_empty()
+            && env_username != actual_username
+        {
+            checks.push(format!(
+                "Telegram OK (token user={actual_username}, configured={env_username})"
+            ));
+        } else {
+            checks.push(format!("Telegram OK ({actual_username})"));
+        }
     } else {
-        checks.push(format!("Telegram OK ({actual_username})"));
+        checks.push("Telegram skipped (disabled)".into());
     }
 
     // --- LLM validation: send a minimal "hi" message ---
@@ -889,15 +1093,81 @@ fn save_config_yaml(
 
     let get = |key: &str| values.get(key).cloned().unwrap_or_default();
 
+    let enabled_raw = get("ENABLED_CHANNELS");
+    let mut channels = Vec::new();
+    for part in enabled_raw.split(',') {
+        let p = part.trim().to_lowercase();
+        if matches!(p.as_str(), "telegram" | "discord" | "whatsapp")
+            && !channels.iter().any(|v| v == &p)
+        {
+            channels.push(p);
+        }
+    }
+    let telegram_enabled = channels.iter().any(|c| c == "telegram");
+    let discord_enabled = channels.iter().any(|c| c == "discord");
+    let whatsapp_enabled = channels.iter().any(|c| c == "whatsapp");
+
     let mut yaml = String::new();
     yaml.push_str("# MicroClaw configuration\n\n");
+    yaml.push_str("# Enabled channels (telegram,discord,whatsapp,web)\n");
+    let channels_note = if channels.is_empty() {
+        "setup later".to_string()
+    } else {
+        channels.join(",")
+    };
+    yaml.push_str(&format!("# channels: {}\n\n", channels_note));
+
     yaml.push_str("# Telegram bot token from @BotFather\n");
     yaml.push_str(&format!(
         "telegram_bot_token: \"{}\"\n",
-        get("TELEGRAM_BOT_TOKEN")
+        if telegram_enabled {
+            get("TELEGRAM_BOT_TOKEN")
+        } else {
+            String::new()
+        }
     ));
     yaml.push_str("# Bot username without @\n");
-    yaml.push_str(&format!("bot_username: \"{}\"\n\n", get("BOT_USERNAME")));
+    yaml.push_str(&format!(
+        "bot_username: \"{}\"\n\n",
+        if telegram_enabled {
+            get("BOT_USERNAME")
+        } else {
+            String::new()
+        }
+    ));
+
+    yaml.push_str("# Discord bot token\n");
+    if discord_enabled {
+        yaml.push_str(&format!(
+            "discord_bot_token: \"{}\"\n\n",
+            get("DISCORD_BOT_TOKEN")
+        ));
+    } else {
+        yaml.push_str("discord_bot_token: null\n\n");
+    }
+
+    yaml.push_str("# WhatsApp Cloud API settings\n");
+    if whatsapp_enabled {
+        yaml.push_str(&format!(
+            "whatsapp_access_token: \"{}\"\n",
+            get("WHATSAPP_ACCESS_TOKEN")
+        ));
+        yaml.push_str(&format!(
+            "whatsapp_phone_number_id: \"{}\"\n",
+            get("WHATSAPP_PHONE_NUMBER_ID")
+        ));
+        yaml.push_str(&format!(
+            "whatsapp_verify_token: \"{}\"\n",
+            get("WHATSAPP_VERIFY_TOKEN")
+        ));
+    } else {
+        yaml.push_str("whatsapp_access_token: null\n");
+        yaml.push_str("whatsapp_phone_number_id: null\n");
+        yaml.push_str("whatsapp_verify_token: null\n");
+    }
+    yaml.push_str("whatsapp_webhook_port: 8080\n\n");
+
+    yaml.push_str("web_enabled: true\n\n");
 
     yaml.push_str(
         "# LLM provider (anthropic, ollama, openai, openrouter, deepseek, google, etc.)\n",
@@ -1015,7 +1285,22 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &SetupApp) {
         .split(chunks[1]);
 
     let mut lines = Vec::<Line>::new();
+    let mut last_section = "";
     for (i, f) in app.fields.iter().enumerate() {
+        let section = SetupApp::section_for_key(f.key);
+        if section != last_section {
+            if !lines.is_empty() {
+                lines.push(Line::from(""));
+            }
+            lines.push(Line::from(Span::styled(
+                format!("[{}]", section),
+                Style::default()
+                    .fg(Color::LightCyan)
+                    .add_modifier(Modifier::BOLD),
+            )));
+            last_section = section;
+        }
+
         let selected = i == app.selected;
         let label = if f.required {
             format!("{}  [required]", f.label)
@@ -1034,7 +1319,10 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &SetupApp) {
             Color::White
         };
         lines.push(Line::from(vec![
-            Span::styled(format!("{prefix} {label}: "), Style::default().fg(color)),
+            Span::styled(
+                format!("{} {}: ", prefix, label),
+                Style::default().fg(color),
+            ),
             Span::styled(value, Style::default().fg(Color::Green)),
         ]));
     }
@@ -1306,6 +1594,7 @@ mod tests {
         ));
 
         let mut values = HashMap::new();
+        values.insert("ENABLED_CHANNELS".into(), "telegram,web".into());
         values.insert("TELEGRAM_BOT_TOKEN".into(), "new_tok".into());
         values.insert("BOT_USERNAME".into(), "new_bot".into());
         values.insert("LLM_PROVIDER".into(), "anthropic".into());

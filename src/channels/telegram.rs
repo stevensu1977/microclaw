@@ -475,7 +475,9 @@ fn split_response_text(text: &str) -> Vec<String> {
             remaining.len()
         } else {
             let boundary = remaining.floor_char_boundary(MAX_LEN.min(remaining.len()));
-            remaining[..boundary].rfind(char::from(10)).unwrap_or(boundary)
+            remaining[..boundary]
+                .rfind(char::from(10))
+                .unwrap_or(boundary)
         };
 
         let mut chunk = remaining[..chunk_len].to_string();
@@ -822,7 +824,6 @@ mod tests {
         assert!(escaped.ends_with("\\\\"));
     }
 
-
     #[test]
     fn test_render_markdown_v2_safe_heading_and_bold() {
         let input = "## Rust 2024\nI am **MicroClawBot**.";
@@ -871,7 +872,6 @@ mod tests {
         let total_len: usize = chunks.iter().map(|c| c.len()).sum();
         assert!(total_len > 0);
     }
-
 
     #[test]
     fn test_split_response_text_balances_fenced_code_blocks() {

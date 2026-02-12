@@ -306,7 +306,7 @@ Publish both installer mode (GitHub Release asset used by `install.sh`) and Home
 
 ## Setup
 
-> **New:** MicroClaw now includes an interactive Q&A config flow (`microclaw config`) and will auto-launch it on first `start` when required config is missing.
+> **New:** MicroClaw now includes an interactive setup wizard (`microclaw setup`) and will auto-launch it on first `start` when required config is missing.
 
 ### 1. Create a Telegram bot
 
@@ -335,7 +335,7 @@ Choose a provider and create an API key:
 ### 3. Configure (recommended: interactive Q&A)
 
 ```sh
-microclaw config
+microclaw setup
 ```
 
 <!-- Setup wizard screenshot placeholder -->
@@ -376,7 +376,7 @@ Provider presets available in the wizard:
 - `together`
 - `custom` (manual provider/model/base URL)
 
-For Ollama, `llm_base_url` defaults to `http://127.0.0.1:11434/v1`, `api_key` is optional, and the interactive config flow can auto-detect locally installed models.
+For Ollama, `llm_base_url` defaults to `http://127.0.0.1:11434/v1`, `api_key` is optional, and the interactive setup wizard can auto-detect locally installed models.
 
 You can still configure manually with `microclaw.config.yaml`:
 
