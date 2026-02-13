@@ -322,7 +322,7 @@ microclaw setup
 
 对于 Ollama：`llm_base_url` 默认是 `http://127.0.0.1:11434/v1`，`api_key` 可留空，交互式配置会尝试自动发现本地已安装模型。
 
-对于 `openai-codex`：请先运行 `codex login`。MicroClaw 会读取 `~/.codex/auth.json`（或 `$CODEX_HOME/auth.json`）里的 OAuth 凭据。默认 base URL 是 `https://chatgpt.com/backend-api`。你也可以填写 `api_key` 作为兜底。
+对于 `openai-codex`：请先运行 `codex login`。MicroClaw 会读取 `~/.codex/auth.json`（或 `$CODEX_HOME/auth.json`）里的 OAuth 凭据。默认 base URL 是 `https://chatgpt.com/backend-api`。
 
 如果你更喜欢手工配置，也可以直接写 `microclaw.config.yaml`：
 

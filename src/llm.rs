@@ -706,7 +706,7 @@ impl OpenAiProvider {
 
         let (api_key, codex_account_id) = if is_openai_codex {
             let _ = refresh_openai_codex_auth_if_needed();
-            match resolve_openai_codex_auth(&config.api_key) {
+            match resolve_openai_codex_auth("") {
                 Ok(auth) => (auth.bearer_token, auth.account_id),
                 Err(e) => {
                     warn!("{}", e);

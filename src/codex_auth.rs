@@ -8,8 +8,6 @@ pub const OPENAI_CODEX_PROVIDER: &str = "openai-codex";
 
 #[derive(Debug, Deserialize)]
 struct CodexAuthFile {
-    #[serde(rename = "OPENAI_API_KEY")]
-    openai_api_key: Option<String>,
     tokens: Option<CodexAuthTokens>,
 }
 
@@ -74,17 +72,11 @@ pub fn codex_auth_file_has_access_token() -> Result<bool, MicroClawError> {
         .and_then(|tokens| tokens.access_token.as_ref())
         .map(|token| !token.trim().is_empty())
         .unwrap_or(false);
-    let has_openai_api_key = parsed
-        .openai_api_key
-        .as_deref()
-        .map(str::trim)
-        .map(|key| !key.is_empty())
-        .unwrap_or(false);
-    Ok(has_access_token || has_openai_api_key)
+    Ok(has_access_token)
 }
 
 pub fn resolve_openai_codex_auth(
-    fallback_api_key: &str,
+    _fallback_api_key: &str,
 ) -> Result<CodexAuthResolved, MicroClawError> {
     if let Ok(token) = std::env::var("OPENAI_CODEX_ACCESS_TOKEN") {
         let trimmed = token.trim();
@@ -128,30 +120,6 @@ pub fn resolve_openai_codex_auth(
             });
         }
 
-        if let Some(api_key) = parsed
-            .openai_api_key
-            .as_deref()
-            .map(str::trim)
-            .filter(|key| !key.is_empty())
-        {
-            return Ok(CodexAuthResolved {
-                bearer_token: api_key.to_string(),
-                account_id: parsed
-                    .tokens
-                    .as_ref()
-                    .and_then(|tokens| tokens.account_id.clone())
-                    .map(|id| id.trim().to_string())
-                    .filter(|id| !id.is_empty()),
-            });
-        }
-    }
-
-    let fallback = fallback_api_key.trim();
-    if !fallback.is_empty() {
-        return Ok(CodexAuthResolved {
-            bearer_token: fallback.to_string(),
-            account_id: None,
-        });
     }
 
     Err(MicroClawError::Config(format!(
@@ -334,5 +302,77 @@ mod tests {
             std::env::remove_var("OPENAI_CODEX_ACCESS_TOKEN");
         }
         assert!(has);
+    }
+
+    #[test]
+    fn test_codex_auth_file_has_access_token_ignores_openai_api_key_only() {
+        let _guard = env_lock();
+        let prev_codex_home = std::env::var("CODEX_HOME").ok();
+        let prev_access = std::env::var("OPENAI_CODEX_ACCESS_TOKEN").ok();
+        std::env::remove_var("OPENAI_CODEX_ACCESS_TOKEN");
+
+        let auth_dir = std::env::temp_dir().join(format!(
+            "microclaw-codex-auth-openai-key-only-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&auth_dir).unwrap();
+        std::fs::write(auth_dir.join("auth.json"), r#"{"OPENAI_API_KEY":"sk-user-stale"}"#).unwrap();
+        std::env::set_var("CODEX_HOME", &auth_dir);
+
+        let has = codex_auth_file_has_access_token().unwrap();
+
+        if let Some(prev) = prev_codex_home {
+            std::env::set_var("CODEX_HOME", prev);
+        } else {
+            std::env::remove_var("CODEX_HOME");
+        }
+        if let Some(prev) = prev_access {
+            std::env::set_var("OPENAI_CODEX_ACCESS_TOKEN", prev);
+        } else {
+            std::env::remove_var("OPENAI_CODEX_ACCESS_TOKEN");
+        }
+        let _ = std::fs::remove_file(auth_dir.join("auth.json"));
+        let _ = std::fs::remove_dir(auth_dir);
+
+        assert!(!has);
+    }
+
+    #[test]
+    fn test_resolve_openai_codex_auth_rejects_openai_api_key_only() {
+        let _guard = env_lock();
+        let prev_codex_home = std::env::var("CODEX_HOME").ok();
+        let prev_access = std::env::var("OPENAI_CODEX_ACCESS_TOKEN").ok();
+        std::env::remove_var("OPENAI_CODEX_ACCESS_TOKEN");
+
+        let auth_dir = std::env::temp_dir().join(format!(
+            "microclaw-codex-auth-openai-key-reject-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&auth_dir).unwrap();
+        std::fs::write(auth_dir.join("auth.json"), r#"{"OPENAI_API_KEY":"sk-user-stale"}"#).unwrap();
+        std::env::set_var("CODEX_HOME", &auth_dir);
+
+        let err = resolve_openai_codex_auth("").unwrap_err().to_string();
+
+        if let Some(prev) = prev_codex_home {
+            std::env::set_var("CODEX_HOME", prev);
+        } else {
+            std::env::remove_var("CODEX_HOME");
+        }
+        if let Some(prev) = prev_access {
+            std::env::set_var("OPENAI_CODEX_ACCESS_TOKEN", prev);
+        } else {
+            std::env::remove_var("OPENAI_CODEX_ACCESS_TOKEN");
+        }
+        let _ = std::fs::remove_file(auth_dir.join("auth.json"));
+        let _ = std::fs::remove_dir(auth_dir);
+
+        assert!(err.contains("requires OAuth"));
     }
 }

@@ -326,11 +326,11 @@ impl Config {
         if self.api_key.is_empty() && !provider_allows_empty_api_key(&self.llm_provider) {
             return Err(MicroClawError::Config("api_key is required".into()));
         }
-        if self.api_key.is_empty() && is_openai_codex_provider(&self.llm_provider) {
+        if is_openai_codex_provider(&self.llm_provider) {
             let has_token = codex_auth_file_has_access_token()?;
             if !has_token {
                 return Err(MicroClawError::Config(
-                    "openai-codex requires OAuth. Run `codex login` first, or set api_key / OPENAI_CODEX_ACCESS_TOKEN.".into(),
+                    "openai-codex requires OAuth. Run `codex login` first, or set OPENAI_CODEX_ACCESS_TOKEN.".into(),
                 ));
             }
         }
@@ -699,6 +699,43 @@ mod tests {
         std::env::set_var("CODEX_HOME", &auth_dir);
 
         let yaml = "telegram_bot_token: tok\nbot_username: bot\nllm_provider: openai-codex\n";
+        let mut config: Config = serde_yaml::from_str(yaml).unwrap();
+        let err = config.post_deserialize().unwrap_err();
+        let msg = err.to_string();
+
+        if let Some(prev) = prev_codex_home {
+            std::env::set_var("CODEX_HOME", prev);
+        } else {
+            std::env::remove_var("CODEX_HOME");
+        }
+        if let Some(prev) = prev_access {
+            std::env::set_var("OPENAI_CODEX_ACCESS_TOKEN", prev);
+        } else {
+            std::env::remove_var("OPENAI_CODEX_ACCESS_TOKEN");
+        }
+        let _ = std::fs::remove_dir(auth_dir);
+
+        assert!(msg.contains("openai-codex requires OAuth"));
+    }
+
+    #[test]
+    fn test_post_deserialize_openai_codex_rejects_plain_api_key_without_oauth() {
+        let _guard = env_lock();
+        let prev_codex_home = std::env::var("CODEX_HOME").ok();
+        let prev_access = std::env::var("OPENAI_CODEX_ACCESS_TOKEN").ok();
+        std::env::remove_var("OPENAI_CODEX_ACCESS_TOKEN");
+
+        let auth_dir = std::env::temp_dir().join(format!(
+            "microclaw-codex-auth-plain-key-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&auth_dir).unwrap();
+        std::env::set_var("CODEX_HOME", &auth_dir);
+
+        let yaml = "telegram_bot_token: tok\nbot_username: bot\nllm_provider: openai-codex\napi_key: sk-user-stale\n";
         let mut config: Config = serde_yaml::from_str(yaml).unwrap();
         let err = config.post_deserialize().unwrap_err();
         let msg = err.to_string();

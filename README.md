@@ -380,7 +380,7 @@ Provider presets available in the wizard:
 
 For Ollama, `llm_base_url` defaults to `http://127.0.0.1:11434/v1`, `api_key` is optional, and the interactive setup wizard can auto-detect locally installed models.
 
-For `openai-codex`, run `codex login` first. MicroClaw will read OAuth from `~/.codex/auth.json` (or `$CODEX_HOME/auth.json`). The default base URL is `https://chatgpt.com/backend-api`, and you can still set `api_key` as a fallback.
+For `openai-codex`, run `codex login` first. MicroClaw will read OAuth from `~/.codex/auth.json` (or `$CODEX_HOME/auth.json`). The default base URL is `https://chatgpt.com/backend-api`.
 
 You can still configure manually with `microclaw.config.yaml`:
 

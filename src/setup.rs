@@ -503,14 +503,16 @@ impl SetupApp {
         self.enabled_channels().iter().any(|c| c == channel)
     }
 
+    fn is_field_required(&self, field: &Field) -> bool {
+        if field.key == "LLM_API_KEY" {
+            return !provider_allows_empty_api_key(&self.field_value("LLM_PROVIDER"));
+        }
+        field.required
+    }
+
     fn validate_local(&self) -> Result<(), MicroClawError> {
         for field in &self.fields {
-            if field.key == "LLM_API_KEY"
-                && provider_allows_empty_api_key(&self.field_value("LLM_PROVIDER"))
-            {
-                continue;
-            }
-            if field.required && field.value.trim().is_empty() {
+            if self.is_field_required(field) && field.value.trim().is_empty() {
                 return Err(MicroClawError::Config(format!("{} is required", field.key)));
             }
         }
@@ -586,7 +588,7 @@ impl SetupApp {
         let provider = self.field_value("LLM_PROVIDER").to_lowercase();
         let api_key_input = self.field_value("LLM_API_KEY");
         let (api_key, codex_account_id) = if is_openai_codex_provider(&provider) {
-            let auth = resolve_openai_codex_auth(&api_key_input)?;
+            let auth = resolve_openai_codex_auth("")?;
             (auth.bearer_token, auth.account_id)
         } else {
             (api_key_input, None)
@@ -1308,7 +1310,8 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &SetupApp) {
         }
 
         let selected = i == app.selected;
-        let label = if f.required {
+        let is_required = app.is_field_required(f);
+        let label = if is_required {
             format!("{}  [required]", f.label)
         } else {
             f.label.to_string()
@@ -1345,7 +1348,11 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &SetupApp) {
         ]),
         Line::from(vec![
             Span::styled("Required: ", Style::default().fg(Color::DarkGray)),
-            Span::raw(if field.required { "yes" } else { "no" }),
+            Span::raw(if app.is_field_required(field) {
+                "yes"
+            } else {
+                "no"
+            }),
         ]),
         Line::from(vec![
             Span::styled("Editing: ", Style::default().fg(Color::DarkGray)),
@@ -1678,5 +1685,25 @@ mod tests {
     fn test_resolve_openai_compat_validation_base_openai() {
         let base = resolve_openai_compat_validation_base("openai", "https://api.openai.com", None);
         assert_eq!(base, "https://api.openai.com/v1");
+    }
+
+    #[test]
+    fn test_llm_api_key_required_depends_on_provider() {
+        let mut app = SetupApp::new();
+        app.set_provider("openai-codex");
+        let api_key_field = app
+            .fields
+            .iter()
+            .find(|f| f.key == "LLM_API_KEY")
+            .expect("LLM_API_KEY field missing");
+        assert!(!app.is_field_required(api_key_field));
+
+        app.set_provider("openai");
+        let api_key_field = app
+            .fields
+            .iter()
+            .find(|f| f.key == "LLM_API_KEY")
+            .expect("LLM_API_KEY field missing");
+        assert!(app.is_field_required(api_key_field));
     }
 }

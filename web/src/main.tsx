@@ -111,8 +111,8 @@ const PROVIDER_SUGGESTIONS = [
 
 const MODEL_OPTIONS: Record<string, string[]> = {
   anthropic: ['claude-sonnet-4-5-20250929', 'claude-opus-4-1-20250805', 'claude-3-7-sonnet-latest'],
-  openai: ['gpt-5.2', 'gpt-5', 'gpt-4.1'],
-  'openai-codex': ['gpt-5.3-codex', 'gpt-5.2-codex', 'gpt-5.1-codex'],
+  openai: ['gpt-5.2'],
+  'openai-codex': ['gpt-5.3-codex'],
   ollama: ['llama3.2', 'qwen2.5', 'deepseek-r1'],
   openrouter: ['openai/gpt-5', 'anthropic/claude-sonnet-4-5', 'google/gemini-2.5-pro'],
   deepseek: ['deepseek-chat', 'deepseek-reasoner'],
