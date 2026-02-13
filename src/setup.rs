@@ -915,6 +915,7 @@ impl SetupApp {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn perform_online_validation(
     telegram_enabled: bool,
     tg_token: &str,

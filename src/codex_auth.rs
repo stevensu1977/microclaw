@@ -119,7 +119,6 @@ pub fn resolve_openai_codex_auth(
                     .filter(|id| !id.is_empty()),
             });
         }
-
     }
 
     Err(MicroClawError::Config(format!(
@@ -319,7 +318,11 @@ mod tests {
                 .as_nanos()
         ));
         std::fs::create_dir_all(&auth_dir).unwrap();
-        std::fs::write(auth_dir.join("auth.json"), r#"{"OPENAI_API_KEY":"sk-user-stale"}"#).unwrap();
+        std::fs::write(
+            auth_dir.join("auth.json"),
+            r#"{"OPENAI_API_KEY":"sk-user-stale"}"#,
+        )
+        .unwrap();
         std::env::set_var("CODEX_HOME", &auth_dir);
 
         let has = codex_auth_file_has_access_token().unwrap();
@@ -355,7 +358,11 @@ mod tests {
                 .as_nanos()
         ));
         std::fs::create_dir_all(&auth_dir).unwrap();
-        std::fs::write(auth_dir.join("auth.json"), r#"{"OPENAI_API_KEY":"sk-user-stale"}"#).unwrap();
+        std::fs::write(
+            auth_dir.join("auth.json"),
+            r#"{"OPENAI_API_KEY":"sk-user-stale"}"#,
+        )
+        .unwrap();
         std::env::set_var("CODEX_HOME", &auth_dir);
 
         let err = resolve_openai_codex_auth("").unwrap_err().to_string();

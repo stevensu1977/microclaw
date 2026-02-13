@@ -7,10 +7,6 @@ use tracing::warn;
 
 use std::collections::HashSet;
 
-use crate::llm_types::{
-    ContentBlock, ImageSource, Message, MessageContent, MessagesRequest, MessagesResponse,
-    ResponseContentBlock, ToolDefinition, Usage,
-};
 use crate::codex_auth::{
     is_openai_codex_provider, refresh_openai_codex_auth_if_needed, resolve_openai_codex_auth,
 };
@@ -18,6 +14,10 @@ use crate::config::Config;
 #[cfg(test)]
 use crate::config::WorkingDirIsolation;
 use crate::error::MicroClawError;
+use crate::llm_types::{
+    ContentBlock, ImageSource, Message, MessageContent, MessagesRequest, MessagesResponse,
+    ResponseContentBlock, ToolDefinition, Usage,
+};
 
 /// Remove orphaned `ToolResult` blocks whose `tool_use_id` does not match any
 /// `ToolUse` block in the conversation.  This can happen after session
@@ -2030,6 +2030,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn test_openai_codex_stream_uses_responses_endpoint() {
         let _guard = env_lock();
         let prev_access = std::env::var("OPENAI_CODEX_ACCESS_TOKEN").ok();
