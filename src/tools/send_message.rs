@@ -10,9 +10,9 @@ use super::{authorize_chat_access, schema_object, Tool, ToolResult};
 use crate::channel::{
     deliver_and_store_bot_message, enforce_channel_policy, get_required_chat_routing, ChatChannel,
 };
-use crate::llm_types::ToolDefinition;
 use crate::config::Config;
 use crate::db::{call_blocking, Database, StoredMessage};
+use crate::llm_types::ToolDefinition;
 
 pub struct SendMessageTool {
     bot: Option<Bot>,

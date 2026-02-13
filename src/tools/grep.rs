@@ -3,8 +3,8 @@ use serde_json::json;
 use std::path::{Path, PathBuf};
 use tracing::info;
 
-use crate::llm_types::ToolDefinition;
 use crate::config::WorkingDirIsolation;
+use crate::llm_types::ToolDefinition;
 
 use super::{schema_object, Tool, ToolResult};
 

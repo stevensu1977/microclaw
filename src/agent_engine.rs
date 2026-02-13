@@ -2,8 +2,8 @@ use async_trait::async_trait;
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::info;
 
-use crate::llm_types::{ContentBlock, ImageSource, Message, MessageContent, ResponseContentBlock};
 use crate::db::{call_blocking, StoredMessage};
+use crate::llm_types::{ContentBlock, ImageSource, Message, MessageContent, ResponseContentBlock};
 use crate::runtime::AppState;
 use crate::text::floor_char_boundary;
 use crate::tools::ToolAuthContext;

@@ -1307,8 +1307,8 @@ mod tests {
     use crate::config::{Config, WorkingDirIsolation};
     use crate::db::call_blocking;
     use crate::llm::LlmProvider;
-    use crate::{error::MicroClawError, llm_types::ResponseContentBlock};
     use crate::{db::Database, memory::MemoryManager, skills::SkillManager, tools::ToolRegistry};
+    use crate::{error::MicroClawError, llm_types::ResponseContentBlock};
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use serde_json::json;

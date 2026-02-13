@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use serde_json::json;
 
 use super::{authorize_chat_access, schema_object, Tool, ToolResult};
-use crate::llm_types::ToolDefinition;
 use crate::db::{call_blocking, Database};
+use crate::llm_types::ToolDefinition;
 
 pub struct ExportChatTool {
     db: Arc<Database>,

@@ -28,9 +28,9 @@ use async_trait::async_trait;
 use serde_json::json;
 use teloxide::prelude::*;
 
-use crate::llm_types::ToolDefinition;
 use crate::config::{Config, WorkingDirIsolation};
 use crate::db::Database;
+use crate::llm_types::ToolDefinition;
 
 pub struct ToolResult {
     pub content: String,

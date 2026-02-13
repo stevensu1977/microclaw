@@ -6,10 +6,10 @@ use teloxide::types::{ChatAction, ParseMode};
 use tracing::{error, info, warn};
 
 use crate::agent_engine::{archive_conversation, process_with_agent, AgentRequestContext};
+use crate::db::{call_blocking, StoredMessage};
 use crate::llm_types::Message;
 #[cfg(test)]
 use crate::llm_types::{ContentBlock, ImageSource, MessageContent};
-use crate::db::{call_blocking, StoredMessage};
 use crate::runtime::AppState;
 use crate::text::floor_char_boundary;
 use crate::usage::build_usage_report;
