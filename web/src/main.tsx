@@ -88,6 +88,7 @@ type UiTheme =
 
 const PROVIDER_SUGGESTIONS = [
   'openai',
+  'openai-codex',
   'ollama',
   'openrouter',
   'anthropic',
@@ -111,6 +112,7 @@ const PROVIDER_SUGGESTIONS = [
 const MODEL_OPTIONS: Record<string, string[]> = {
   anthropic: ['claude-sonnet-4-5-20250929', 'claude-opus-4-1-20250805', 'claude-3-7-sonnet-latest'],
   openai: ['gpt-5.2', 'gpt-5', 'gpt-4.1'],
+  'openai-codex': ['gpt-5.3-codex', 'gpt-5.2-codex', 'gpt-5.1-codex'],
   ollama: ['llama3.2', 'qwen2.5', 'deepseek-r1'],
   openrouter: ['openai/gpt-5', 'anthropic/claude-sonnet-4-5', 'google/gemini-2.5-pro'],
   deepseek: ['deepseek-chat', 'deepseek-reasoner'],
@@ -158,6 +160,7 @@ const RADIX_ACCENT_BY_THEME: Record<UiTheme, string> = {
 function defaultModelForProvider(providerRaw: string): string {
   const provider = providerRaw.trim().toLowerCase()
   if (provider === 'anthropic') return 'claude-sonnet-4-5-20250929'
+  if (provider === 'openai-codex') return 'gpt-5.3-codex'
   if (provider === 'ollama') return 'llama3.2'
   return 'gpt-5.2'
 }
@@ -1298,7 +1301,7 @@ function App() {
                           LLM provider and API settings.
                         </Text>
                         <Text size="1" color="gray" className="mt-2 block">llm_provider selects routing preset; model is the exact model id sent to provider API.</Text>
-                        <Text size="1" color="gray" className="mt-1 block">For custom providers set llm_base_url. Keep api_key empty only if your deployment handles auth elsewhere.</Text>
+                        <Text size="1" color="gray" className="mt-1 block">For custom providers set llm_base_url. For <code>openai-codex</code> and <code>ollama</code>, api_key can be empty.</Text>
                         <div className="mt-4 space-y-3">
                           <ConfigFieldCard label="llm_provider" description={<>Select provider preset for request routing and defaults.</>}>
                             <div className="mt-2">
