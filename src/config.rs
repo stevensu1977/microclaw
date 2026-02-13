@@ -74,6 +74,10 @@ fn default_web_run_history_limit() -> usize {
 fn default_web_session_idle_ttl_seconds() -> u64 {
     300
 }
+
+fn default_model_prices() -> Vec<ModelPrice> {
+    Vec::new()
+}
 fn is_local_web_host(host: &str) -> bool {
     let h = host.trim().to_ascii_lowercase();
     h == "127.0.0.1" || h == "localhost" || h == "::1"
@@ -84,6 +88,13 @@ fn is_local_web_host(host: &str) -> bool {
 pub enum WorkingDirIsolation {
     Shared,
     Chat,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ModelPrice {
+    pub model: String,
+    pub input_per_million_usd: f64,
+    pub output_per_million_usd: f64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -150,6 +161,8 @@ pub struct Config {
     pub web_run_history_limit: usize,
     #[serde(default = "default_web_session_idle_ttl_seconds")]
     pub web_session_idle_ttl_seconds: u64,
+    #[serde(default = "default_model_prices")]
+    pub model_prices: Vec<ModelPrice>,
 }
 
 impl Config {
@@ -272,6 +285,26 @@ impl Config {
         if self.max_document_size_mb == 0 {
             self.max_document_size_mb = default_max_document_size_mb();
         }
+        for price in &mut self.model_prices {
+            price.model = price.model.trim().to_string();
+            if price.model.is_empty() {
+                return Err(MicroClawError::Config(
+                    "model_prices entries must include non-empty model".into(),
+                ));
+            }
+            if !(price.input_per_million_usd.is_finite() && price.input_per_million_usd >= 0.0) {
+                return Err(MicroClawError::Config(format!(
+                    "model_prices[{}].input_per_million_usd must be >= 0",
+                    price.model
+                )));
+            }
+            if !(price.output_per_million_usd.is_finite() && price.output_per_million_usd >= 0.0) {
+                return Err(MicroClawError::Config(format!(
+                    "model_prices[{}].output_per_million_usd must be >= 0",
+                    price.model
+                )));
+            }
+        }
 
         // Validate required fields
         let has_telegram = !self.telegram_bot_token.trim().is_empty();
@@ -291,6 +324,29 @@ impl Config {
         }
 
         Ok(())
+    }
+
+    pub fn model_price(&self, model: &str) -> Option<&ModelPrice> {
+        let needle = model.trim();
+        self.model_prices
+            .iter()
+            .find(|p| p.model.eq_ignore_ascii_case(needle))
+            .or_else(|| self.model_prices.iter().find(|p| p.model == "*"))
+    }
+
+    pub fn estimate_cost_usd(
+        &self,
+        model: &str,
+        input_tokens: i64,
+        output_tokens: i64,
+    ) -> Option<f64> {
+        let price = self.model_price(model)?;
+        let in_tok = input_tokens.max(0) as f64;
+        let out_tok = output_tokens.max(0) as f64;
+        Some(
+            (in_tok / 1_000_000.0) * price.input_per_million_usd
+                + (out_tok / 1_000_000.0) * price.output_per_million_usd,
+        )
     }
 
     /// Save config as YAML to the given path.
@@ -340,6 +396,7 @@ mod tests {
             web_rate_window_seconds: 10,
             web_run_history_limit: 512,
             web_session_idle_ttl_seconds: 300,
+            model_prices: vec![],
         }
     }
 
@@ -562,6 +619,43 @@ mod tests {
         let mut config: Config = serde_yaml::from_str(yaml).unwrap();
         config.post_deserialize().unwrap();
         assert_eq!(config.web_auth_token.as_deref(), Some("token123"));
+    }
+
+    #[test]
+    fn test_model_prices_parse_and_estimate() {
+        let yaml = r#"
+telegram_bot_token: tok
+bot_username: bot
+api_key: key
+model_prices:
+  - model: claude-sonnet-4-5-20250929
+    input_per_million_usd: 3.0
+    output_per_million_usd: 15.0
+"#;
+        let mut config: Config = serde_yaml::from_str(yaml).unwrap();
+        config.post_deserialize().unwrap();
+        let est = config
+            .estimate_cost_usd("claude-sonnet-4-5-20250929", 1000, 2000)
+            .unwrap();
+        assert!((est - 0.033).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_model_prices_invalid_rejected() {
+        let yaml = r#"
+telegram_bot_token: tok
+bot_username: bot
+api_key: key
+model_prices:
+  - model: ""
+    input_per_million_usd: 1.0
+    output_per_million_usd: 1.0
+"#;
+        let mut config: Config = serde_yaml::from_str(yaml).unwrap();
+        let err = config.post_deserialize().unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("model_prices entries must include non-empty model"));
     }
 
     #[test]

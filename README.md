@@ -140,6 +140,7 @@ Unavailable skills are filtered automatically by platform/dependencies, so unsup
 
 **Commands:**
 - `/skills` -- list all available skills
+- `/usage` -- show token usage summary (current chat + global totals)
 
 ## MCP
 
@@ -435,6 +436,7 @@ All configuration is via `microclaw.config.yaml`:
 | `bot_username` | Yes | -- | Bot username (without @) |
 | `llm_provider` | No | `anthropic` | Provider preset ID (or custom ID). `anthropic` uses native Anthropic API, others use OpenAI-compatible API |
 | `model` | No | provider-specific | Model name |
+| `model_prices` | No | `[]` | Optional per-model pricing table (USD per 1M tokens) used by `/usage` cost estimates |
 | `llm_base_url` | No | provider preset default | Custom provider base URL |
 | `data_dir` | No | `./microclaw.data` | Data root (`runtime` data in `data_dir/runtime`, skills in `data_dir/skills`) |
 | `working_dir` | No | `./tmp` | Default working directory for tool operations; relative paths in `bash/read_file/write_file/edit_file/glob/grep` resolve from here |

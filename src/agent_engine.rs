@@ -4,7 +4,6 @@ use tracing::info;
 
 use crate::claude::{ContentBlock, ImageSource, Message, MessageContent, ResponseContentBlock};
 use crate::db::{call_blocking, StoredMessage};
-use crate::llm::LlmProvider;
 use crate::runtime::AppState;
 use crate::tools::ToolAuthContext;
 
@@ -232,7 +231,9 @@ pub(crate) async fn process_with_agent_impl(
             &messages,
         );
         messages = compact_messages(
-            state.llm.as_ref(),
+            state,
+            context.caller_channel,
+            chat_id,
             &messages,
             state.config.compact_keep_recent,
         )
@@ -279,6 +280,27 @@ pub(crate) async fn process_with_agent_impl(
                 .send_message(&system_prompt, messages.clone(), Some(tool_defs.clone()))
                 .await?
         };
+
+        if let Some(usage) = &response.usage {
+            let channel = context.caller_channel.to_string();
+            let provider = state.config.llm_provider.clone();
+            let model = state.config.model.clone();
+            let input_tokens = i64::from(usage.input_tokens);
+            let output_tokens = i64::from(usage.output_tokens);
+            let _ = call_blocking(state.db.clone(), move |db| {
+                db.log_llm_usage(
+                    chat_id,
+                    &channel,
+                    &provider,
+                    &model,
+                    input_tokens,
+                    output_tokens,
+                    "agent_loop",
+                )
+                .map(|_| ())
+            })
+            .await;
+        }
 
         let stop_reason = response.stop_reason.as_deref().unwrap_or("end_turn");
 
@@ -701,7 +723,9 @@ pub fn archive_conversation(data_dir: &str, channel: &str, chat_id: i64, message
 
 /// Compact old messages by summarizing them via Claude, keeping recent messages verbatim.
 async fn compact_messages(
-    llm: &dyn LlmProvider,
+    state: &AppState,
+    caller_channel: &str,
+    chat_id: i64,
     messages: &[Message],
     keep_recent: usize,
 ) -> Vec<Message> {
@@ -738,19 +762,43 @@ async fn compact_messages(
 
     let summary = match tokio::time::timeout(
         std::time::Duration::from_secs(60),
-        llm.send_message("You are a helpful summarizer.", summarize_messages, None),
+        state
+            .llm
+            .send_message("You are a helpful summarizer.", summarize_messages, None),
     )
     .await
     {
-        Ok(Ok(response)) => response
-            .content
-            .iter()
-            .filter_map(|b| match b {
-                ResponseContentBlock::Text { text } => Some(text.as_str()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join(""),
+        Ok(Ok(response)) => {
+            if let Some(usage) = &response.usage {
+                let channel = caller_channel.to_string();
+                let provider = state.config.llm_provider.clone();
+                let model = state.config.model.clone();
+                let input_tokens = i64::from(usage.input_tokens);
+                let output_tokens = i64::from(usage.output_tokens);
+                let _ = call_blocking(state.db.clone(), move |db| {
+                    db.log_llm_usage(
+                        chat_id,
+                        &channel,
+                        &provider,
+                        &model,
+                        input_tokens,
+                        output_tokens,
+                        "compaction",
+                    )
+                    .map(|_| ())
+                })
+                .await;
+            }
+            response
+                .content
+                .iter()
+                .filter_map(|b| match b {
+                    ResponseContentBlock::Text { text } => Some(text.as_str()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("")
+        }
         Ok(Err(e)) => {
             tracing::warn!("Compaction summarization failed: {e}, falling back to truncation");
             return recent_messages.to_vec();

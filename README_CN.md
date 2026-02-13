@@ -131,6 +131,7 @@ microclaw.data/skills/
 
 **命令：**
 - `/skills` -- 列出所有可用技能
+- `/usage` -- 查看 token 用量统计（当前聊天 + 全局汇总）
 
 ## 计划与执行
 
@@ -376,6 +377,7 @@ microclaw gateway uninstall
 | `bot_username` | 是 | -- | Bot 用户名（不带 @） |
 | `llm_provider` | 否 | `anthropic` | 提供方预设 ID（或自定义 ID）。`anthropic` 走原生 Anthropic API，其他走 OpenAI 兼容 API |
 | `model` | 否 | 随 provider 默认 | 模型名 |
+| `model_prices` | 否 | `[]` | 可选模型价格表（每百万 token 的美元单价），用于 `/usage` 成本估算 |
 | `llm_base_url` | 否 | provider 预设默认值 | 自定义 API 基础地址 |
 | `data_dir` | 否 | `./microclaw.data` | 数据根目录（运行时数据在 `data_dir/runtime`，技能在 `data_dir/skills`） |
 | `working_dir` | 否 | `./tmp` | 工具默认工作目录；`bash/read_file/write_file/edit_file/glob/grep` 的相对路径都以此为基准 |

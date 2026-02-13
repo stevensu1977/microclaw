@@ -36,6 +36,7 @@ fn minimal_config() -> Config {
         web_rate_window_seconds: 10,
         web_run_history_limit: 512,
         web_session_idle_ttl_seconds: 300,
+        model_prices: vec![],
     }
 }
 

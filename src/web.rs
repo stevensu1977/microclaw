@@ -1433,6 +1433,7 @@ mod tests {
             web_rate_window_seconds: 10,
             web_run_history_limit: 512,
             web_session_idle_ttl_seconds: 300,
+            model_prices: vec![],
         };
         let dir = std::env::temp_dir().join(format!("microclaw_webtest_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
