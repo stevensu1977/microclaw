@@ -340,7 +340,10 @@ impl Tool for SendMessageTool {
                         file_path.display()
                     );
                     if let Err(e) = self.store_bot_message(chat_id, content).await {
-                        warn!("send_message store_bot_message failed: chat_id={}, error={}", chat_id, e);
+                        warn!(
+                            "send_message store_bot_message failed: chat_id={}, error={}",
+                            chat_id, e
+                        );
                         return ToolResult::error(e);
                     }
                     ToolResult::success("Attachment sent successfully.".into())
