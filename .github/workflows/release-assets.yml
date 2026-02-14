@@ -18,9 +18,52 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  verify-ci:
+    name: Verify CI Passed
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+    steps:
+      - name: Checkout tag commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Ensure CI succeeded for tag commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          TARGET_SHA="$(git rev-parse HEAD)"
+          echo "Checking CI status for commit: ${TARGET_SHA}"
+
+          SUCCESS_RUN_ID="$(
+            gh run list \
+              --repo "${GITHUB_REPOSITORY}" \
+              --workflow "CI" \
+              --commit "${TARGET_SHA}" \
+              --json databaseId,conclusion,status \
+              --jq '[.[] | select(.conclusion == "success")] | first | .databaseId'
+          )"
+
+          if [[ -z "${SUCCESS_RUN_ID}" || "${SUCCESS_RUN_ID}" == "null" ]]; then
+            echo "No successful CI run found for commit ${TARGET_SHA}."
+            echo "Recent CI runs for this commit:"
+            gh run list \
+              --repo "${GITHUB_REPOSITORY}" \
+              --workflow "CI" \
+              --commit "${TARGET_SHA}" \
+              --json databaseId,status,conclusion,url \
+              --jq '.[] | {id: .databaseId, status: .status, conclusion: .conclusion, url: .url}'
+            exit 1
+          fi
+
+          echo "Found successful CI run id: ${SUCCESS_RUN_ID}"
+
   build-assets:
     name: Build ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
+    needs: verify-ci
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
     strategy:

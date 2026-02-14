@@ -182,64 +182,25 @@ echo "Created tarball: $TARBALL_PATH"
 SHA256=$(shasum -a 256 "$TARBALL_PATH" | awk '{print $1}')
 echo "SHA256: $SHA256"
 
-# --- Git commit + tag ---
+# --- Git commit + push ---
 git add .
 git commit -m "bump version to $NEW_VERSION"
-git tag "$TAG"
-git push
-git push --tags
-
-# --- GitHub release ---
-RELEASE_NOTES_FILE="target/release/release-notes-$TAG.md"
-build_release_notes "$PREV_TAG" "$TAG" "$RELEASE_NOTES_FILE"
-
-if gh release view "$TAG" --repo "$GITHUB_REPO" >/dev/null 2>&1; then
-  echo "Release $TAG already exists. Skipping create."
-else
-  gh release create "$TAG" "$TARBALL_PATH" \
-    --repo "$GITHUB_REPO" \
-    -t "$TAG" \
-    -F "$RELEASE_NOTES_FILE"
-  echo "Created GitHub release: $TAG"
-fi
-
-# --- Update homebrew-tap ---
-if [ ! -d "$TAP_DIR/.git" ]; then
-  echo "Cloning tap repo..."
-  git clone "https://github.com/$TAP_REPO.git" "$TAP_DIR"
-fi
-
-cd "$TAP_DIR"
-
-# Create Formula dir if it doesn't exist
-mkdir -p Formula
-
-# Write the formula
-cat > "$FORMULA_PATH" << RUBY
-class Microclaw < Formula
-  desc "Agentic AI assistant for Telegram — web search, scheduling, memory, tool execution"
-  homepage "https://github.com/$GITHUB_REPO"
-  url "https://github.com/$GITHUB_REPO/releases/download/$TAG/$TARBALL_NAME"
-  sha256 "$SHA256"
-  license "MIT"
-
-  def install
-    bin.install "microclaw"
-  end
-
-  test do
-    assert_match "MicroClaw", shell_output("#{bin}/microclaw help")
-  end
-end
-RUBY
-
-git add .
-git commit -m "microclaw homebrew release $NEW_VERSION"
 git push
 
-echo ""
-echo "Done! Released $TAG and updated Homebrew tap."
-echo ""
-echo "Users can install with:"
-echo "  brew tap everettjf/tap"
-echo "  brew install microclaw"
+RELEASE_COMMIT_SHA="$(git rev-parse HEAD)"
+echo "Release commit pushed: ${RELEASE_COMMIT_SHA}"
+
+# --- Finalize release (blocking) ---
+"$ROOT_DIR/scripts/release_finalize.sh" \
+  --repo-dir "$REPO_DIR" \
+  --tap-dir "$TAP_DIR" \
+  --tap-repo "$TAP_REPO" \
+  --formula-path "$FORMULA_PATH" \
+  --github-repo "$GITHUB_REPO" \
+  --prev-tag "$PREV_TAG" \
+  --new-version "$NEW_VERSION" \
+  --tag "$TAG" \
+  --tarball-path "$TARBALL_PATH" \
+  --tarball-name "$TARBALL_NAME" \
+  --sha256 "$SHA256" \
+  --release-commit-sha "$RELEASE_COMMIT_SHA"
