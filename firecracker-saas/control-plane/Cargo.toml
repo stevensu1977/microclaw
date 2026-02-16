@@ -1,0 +1,22 @@
+[package]
+name = "microclaw-control-plane"
+version = "0.1.0"
+edition = "2021"
+description = "MicroClaw Firecracker SaaS Control Plane"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+axum = "0.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", features = ["json"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1"
+thiserror = "2"
+hyper = { version = "1", features = ["full"] }
+hyper-util = { version = "0.1", features = ["tokio", "client-legacy", "http1"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }

@@ -1,0 +1,35 @@
+# MicroClaw Firecracker SaaS - 租户等级配置
+# Rust 版本相比 Node.js 可使用更小的资源配额
+
+tiers:
+  free:
+    vcpu: 1
+    memory_mb: 128      # Node.js 需要 256MB
+    disk_mb: 128
+    network_mbps: 5
+    max_channels: 1
+    max_messages_per_day: 100
+
+  pro:
+    vcpu: 1
+    memory_mb: 256      # Node.js 需要 512MB
+    disk_mb: 512
+    network_mbps: 20
+    max_channels: 3
+    max_messages_per_day: 1000
+
+  team:
+    vcpu: 2
+    memory_mb: 512      # Node.js 需要 1GB
+    disk_mb: 2048
+    network_mbps: 50
+    max_channels: 10
+    max_messages_per_day: 10000
+
+  enterprise:
+    vcpu: 4
+    memory_mb: 1024     # Node.js 需要 2GB
+    disk_mb: 8192
+    network_mbps: 100
+    max_channels: -1     # 无限制
+    max_messages_per_day: -1

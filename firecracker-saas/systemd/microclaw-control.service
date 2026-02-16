@@ -1,0 +1,30 @@
+[Unit]
+Description=MicroClaw Firecracker SaaS Control Plane
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/microclaw-saas
+Environment=RUST_LOG=info
+Environment=FC_BIN=/usr/local/bin/firecracker
+Environment=VMLINUX_PATH=/var/lib/microclaw-saas/vmlinux
+Environment=ROOTFS_PATH=/var/lib/microclaw-saas/rootfs.ext4
+Environment=DATA_DIR=/var/lib/microclaw-saas/tenants
+Environment=BIND_ADDR=127.0.0.1:8080
+ExecStart=/opt/microclaw-saas/microclaw-control-plane
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65535
+
+# 安全加固
+ProtectSystem=strict
+ReadWritePaths=/var/lib/microclaw-saas /var/log/microclaw-saas /tmp
+ProtectHome=yes
+NoNewPrivileges=no
+# 需要 root 权限来管理 TAP 设备和 iptables
+
+[Install]
+WantedBy=multi-user.target

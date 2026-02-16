@@ -1,0 +1,22 @@
+# Rust build artifacts
+control-plane/target/
+
+# Build outputs (kernel, rootfs images, snapshots)
+build/rootfs.ext4
+build/vmlinux
+build/snapshots/
+
+# Runtime data
+/var/lib/microclaw-saas/
+
+# Firecracker sockets
+*.sock
+
+# Mounted volumes
+**/mnt/
+
+# OS / editor
+.DS_Store
+*.swp
+*.swo
+*~
