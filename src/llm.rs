@@ -402,6 +402,10 @@ fn process_anthropic_stream_event(
             else {
                 return;
             };
+            // Some proxies omit content_block_start; ensure the index is tracked.
+            if !ordered_indexes.contains(&index) {
+                ordered_indexes.push(index);
+            }
             let Some(delta) = v.get("delta") else {
                 return;
             };

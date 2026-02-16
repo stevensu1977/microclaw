@@ -510,10 +510,14 @@ pub(crate) async fn process_with_agent_impl(
                     "Empty visible model reply; injecting runtime guard and retrying once (chat_id={})",
                     chat_id
                 );
-                messages.push(Message {
-                    role: "assistant".into(),
-                    content: MessageContent::Text(text.clone()),
-                });
+                // Only include the assistant message if it has non-empty text;
+                // the Anthropic API rejects blank text content blocks.
+                if !text.trim().is_empty() {
+                    messages.push(Message {
+                        role: "assistant".into(),
+                        content: MessageContent::Text(text.clone()),
+                    });
+                }
                 messages.push(Message {
                     role: "user".into(),
                     content: MessageContent::Text(
@@ -1109,9 +1113,10 @@ pub(crate) fn strip_thinking(text: &str) -> String {
         if let Some(end) = rest[start..].find("</think>") {
             rest = &rest[start + end + "</think>".len()..];
         } else {
-            // Unclosed <think> — strip everything after it
-            rest = "";
-            break;
+            // Unclosed <think> — skip just the tag, keep the rest.
+            // We can't know where thinking ends without a close tag,
+            // but stripping everything loses visible text which is worse.
+            rest = &rest[start + "<think>".len()..];
         }
     }
     result.push_str(rest);

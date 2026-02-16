@@ -7,6 +7,7 @@ license = "MIT"
 [features]
 default = []
 sqlite-vec = ["dep:sqlite-vec"]
+openssl-vendored = ["dep:openssl"]
 
 [dependencies]
 teloxide = { version = "0.17", features = ["macros"] }
@@ -38,6 +39,7 @@ async-stream = "0.3"
 futures-util = "0.3"
 tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
 sqlite-vec = { version = "0.1.7-alpha.10", optional = true }
+openssl = { version = "0.10", features = ["vendored"], optional = true }
 
 [dev-dependencies]
 tower = "0.5"

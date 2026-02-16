@@ -1043,7 +1043,7 @@ mod tests {
     #[test]
     fn test_strip_thinking_unclosed() {
         let input = "before<think>never closed";
-        assert_eq!(strip_thinking(input), "before");
+        assert_eq!(strip_thinking(input), "beforenever closed");
     }
 
     #[test]
