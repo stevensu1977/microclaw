@@ -1,8 +1,10 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 
+use crate::db::Database;
 use crate::firecracker::FirecrackerClient;
 use crate::network::SubnetAllocator;
 use crate::snapshot::SnapshotManager;
@@ -20,6 +22,10 @@ pub struct Tenant {
     pub vm_pid: Option<u32>,
     pub channels: Vec<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
+    /// When true, the MicroClaw instance inside the VM skips the approval loop
+    /// for high-risk tools (e.g. bash). Only enable for trusted tenants.
+    #[serde(default)]
+    pub skip_tool_approval: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -73,6 +79,7 @@ pub struct CreateTenantRequest {
     pub tier: Tier,
     pub channels: Vec<String>,
     pub env_vars: HashMap<String, String>,
+    pub skip_tool_approval: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -86,6 +93,7 @@ pub struct TenantManager {
     tenants: HashMap<String, Tenant>,
     subnet_allocator: SubnetAllocator,
     snapshot_manager: SnapshotManager,
+    db: Arc<Database>,
     fc_bin: String,
     vmlinux: String,
     rootfs: String,
@@ -100,16 +108,102 @@ impl TenantManager {
         data_dir: String,
         snapshot_dir: String,
         subnet_allocator: SubnetAllocator,
+        db: Arc<Database>,
     ) -> Self {
         let snapshot_manager = SnapshotManager::new(fc_bin.clone(), snapshot_dir);
         Self {
             tenants: HashMap::new(),
             subnet_allocator,
             snapshot_manager,
+            db,
             fc_bin,
             vmlinux,
             rootfs,
             data_dir,
+        }
+    }
+
+    /// Recover tenant state from SQLite on startup.
+    /// Loads all persisted tenants, rebuilds the SubnetAllocator, and reconciles
+    /// against actual system state (checks if VM processes are still alive).
+    pub fn recover(&mut self) {
+        let tenants = match self.db.load_all_tenants() {
+            Ok(t) => t,
+            Err(e) => {
+                tracing::error!("Failed to load tenants from DB: {}", e);
+                return;
+            }
+        };
+
+        // Restore subnet allocator next_index
+        match self.db.get_subnet_next_index() {
+            Ok(idx) => self.subnet_allocator.set_next_index(idx),
+            Err(e) => tracing::warn!("Failed to load subnet_next_index from DB: {}", e),
+        }
+
+        let count = tenants.len();
+        for mut tenant in tenants {
+            // Rebuild subnet allocation from vm_ip (parse 172.16.{index}.2)
+            if let Some(index) = parse_subnet_index(&tenant.vm_ip) {
+                self.subnet_allocator
+                    .restore_allocation(&tenant.id, index);
+            }
+
+            // Reconcile: check if VM process is actually alive
+            match tenant.status {
+                TenantStatus::Running | TenantStatus::Paused => {
+                    if let Some(pid) = tenant.vm_pid {
+                        if !process_alive(pid) {
+                            tracing::warn!(
+                                "Tenant '{}' was {:?} but VM process {} is dead, marking Stopped",
+                                tenant.id,
+                                tenant.status,
+                                pid
+                            );
+                            tenant.status = TenantStatus::Stopped;
+                            tenant.vm_pid = None;
+                            let _ = self.db.update_tenant_status(
+                                &tenant.id,
+                                TenantStatus::Stopped,
+                                None,
+                            );
+                        }
+                    } else {
+                        // No PID recorded but status says running — mark stopped
+                        tracing::warn!(
+                            "Tenant '{}' was {:?} but has no VM PID, marking Stopped",
+                            tenant.id,
+                            tenant.status
+                        );
+                        tenant.status = TenantStatus::Stopped;
+                        let _ = self.db.update_tenant_status(
+                            &tenant.id,
+                            TenantStatus::Stopped,
+                            None,
+                        );
+                    }
+                }
+                TenantStatus::Creating => {
+                    // Incomplete provisioning from a previous crash
+                    tracing::warn!(
+                        "Tenant '{}' was in Creating state, marking Failed",
+                        tenant.id
+                    );
+                    tenant.status = TenantStatus::Failed;
+                    let _ = self.db.update_tenant_status(
+                        &tenant.id,
+                        TenantStatus::Failed,
+                        None,
+                    );
+                }
+                _ => {}
+            }
+
+            self.tenants.insert(tenant.id.clone(), tenant);
+        }
+
+        if count > 0 {
+            tracing::info!("Recovered {} tenant(s) from database", count);
         }
     }
 
@@ -149,8 +243,12 @@ impl TenantManager {
                     vm_pid: Some(vm_pid),
                     channels: req.channels,
                     created_at: chrono::Utc::now(),
+                    skip_tool_approval: req.skip_tool_approval,
                 };
 
+                self.db.insert_tenant(&tenant)?;
+                // Persist subnet allocator's next_index
+                let _ = self.db.set_subnet_next_index(self.subnet_allocator.next_index());
                 self.tenants.insert(req.tenant_id, tenant.clone());
                 tracing::info!("Tenant '{}' created successfully", tenant.id);
                 Ok(tenant)
@@ -188,8 +286,15 @@ impl TenantManager {
         let data_vol = format!("{}/data.ext4", tenant_data_dir);
         crate::network::create_data_volume(&data_vol, req.tier.disk_mb())?;
 
-        // 4. 写入环境变量
-        write_tenant_env(tenant_data_dir, &req.env_vars)?;
+        // 4. 写入环境变量 (inject skip_tool_approval if set)
+        let mut env_vars = req.env_vars.clone();
+        if req.skip_tool_approval {
+            env_vars.insert(
+                "MICROCLAW_SKIP_TOOL_APPROVAL".to_string(),
+                "true".to_string(),
+            );
+        }
+        write_tenant_env(tenant_data_dir, &env_vars)?;
 
         // 5. 创建 rootfs 副本 (CoW)
         let tenant_rootfs = format!("{}/rootfs.ext4", tenant_data_dir);
@@ -215,8 +320,10 @@ impl TenantManager {
     }
 
     /// Register a pre-existing tenant (e.g. for testing or recovery).
-    pub fn register_tenant(&mut self, tenant: Tenant) {
+    pub fn register_tenant(&mut self, tenant: Tenant) -> Result<()> {
+        self.db.insert_tenant(&tenant)?;
         self.tenants.insert(tenant.id.clone(), tenant);
+        Ok(())
     }
 
     pub fn list_tenants(&self) -> Vec<Tenant> {
@@ -247,6 +354,7 @@ impl TenantManager {
         // 清理 socket
         let _ = std::fs::remove_file(&tenant.socket_path);
 
+        self.db.delete_tenant(id)?;
         self.tenants.remove(id);
         tracing::info!("Tenant '{}' deleted", id);
         Ok(())
@@ -285,6 +393,8 @@ impl TenantManager {
             .await?
         };
 
+        self.db
+            .update_tenant_status(id, TenantStatus::Running, Some(vm_pid))?;
         tenant.vm_pid = Some(vm_pid);
         tenant.status = TenantStatus::Running;
         Ok(())
@@ -297,6 +407,8 @@ impl TenantManager {
             nix_kill(pid)?;
         }
 
+        self.db
+            .update_tenant_status(id, TenantStatus::Stopped, None)?;
         tenant.vm_pid = None;
         tenant.status = TenantStatus::Stopped;
         let _ = std::fs::remove_file(&tenant.socket_path);
@@ -313,6 +425,8 @@ impl TenantManager {
         let fc = FirecrackerClient::new(&self.fc_bin, &tenant.socket_path);
         fc.pause_vm().await?;
 
+        self.db
+            .update_tenant_status(id, TenantStatus::Paused, tenant.vm_pid)?;
         tenant.status = TenantStatus::Paused;
         Ok(())
     }
@@ -327,6 +441,8 @@ impl TenantManager {
         let fc = FirecrackerClient::new(&self.fc_bin, &tenant.socket_path);
         fc.resume_vm().await?;
 
+        self.db
+            .update_tenant_status(id, TenantStatus::Running, tenant.vm_pid)?;
         tenant.status = TenantStatus::Running;
         Ok(())
     }
@@ -458,6 +574,21 @@ fn write_tenant_env(data_dir: &str, env_vars: &HashMap<String, String>) -> Resul
     let _ = std::fs::remove_dir(&mount_dir);
 
     result
+}
+
+/// Parse the subnet index from a VM IP like "172.16.{index}.2".
+fn parse_subnet_index(vm_ip: &str) -> Option<u16> {
+    let parts: Vec<&str> = vm_ip.split('.').collect();
+    if parts.len() == 4 {
+        parts[2].parse::<u16>().ok()
+    } else {
+        None
+    }
+}
+
+/// Check if a process with the given PID is alive.
+fn process_alive(pid: u32) -> bool {
+    std::path::Path::new(&format!("/proc/{}", pid)).exists()
 }
 
 fn nix_kill(pid: u32) -> Result<()> {

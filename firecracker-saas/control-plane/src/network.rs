@@ -55,6 +55,21 @@ impl SubnetAllocator {
     pub fn release(&mut self, tenant_id: &str) {
         self.allocated.remove(tenant_id);
     }
+
+    /// Set the next subnet index (used during recovery from DB).
+    pub fn set_next_index(&mut self, index: u16) {
+        self.next_index = index;
+    }
+
+    /// Restore a tenant→subnet allocation without bumping next_index (used during recovery).
+    pub fn restore_allocation(&mut self, tenant_id: &str, index: u16) {
+        self.allocated.insert(tenant_id.to_string(), index);
+    }
+
+    /// Return the current next_index value (for persisting to DB).
+    pub fn next_index(&self) -> u16 {
+        self.next_index
+    }
 }
 
 /// 创建 TAP 网络设备
@@ -99,10 +114,76 @@ pub fn create_tap_device(tap_name: &str, gateway_ip: &str) -> Result<()> {
     Ok(())
 }
 
-/// 删除 TAP 网络设备
+/// 删除 TAP 网络设备及其关联的 iptables 规则
 pub fn delete_tap_device(tap_name: &str) -> Result<()> {
     tracing::info!("Deleting TAP device: {}", tap_name);
+
+    // 读取 TAP 设备的 gateway IP（用于推导子网，清理 NAT 规则）
+    let gateway_ip = get_tap_gateway_ip(tap_name);
+
+    // 清理 iptables FORWARD 规则（与 TAP 名称关联）
+    let _ = delete_iptables_rules_by_interface("FORWARD", tap_name);
+
+    // 清理 iptables NAT POSTROUTING 规则（与子网关联）
+    if let Some(gw) = &gateway_ip {
+        let parts: Vec<&str> = gw.rsplitn(2, '.').collect();
+        let subnet = format!("{}.0/30", parts[1]);
+        let _ = delete_nat_rules_by_subnet(&subnet);
+    }
+
     run_cmd("ip", &["link", "del", tap_name])?;
+    Ok(())
+}
+
+/// 从 TAP 设备读取 gateway IP 地址
+fn get_tap_gateway_ip(tap_name: &str) -> Option<String> {
+    let output = Command::new("ip")
+        .args(["-4", "addr", "show", tap_name])
+        .output()
+        .ok()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // 解析 "inet 172.16.1.1/30" 格式
+    for line in stdout.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("inet ") {
+            if let Some(addr) = trimmed.split_whitespace().nth(1) {
+                return addr.split('/').next().map(|s| s.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// 删除 FORWARD 链中所有关联指定网卡的规则
+fn delete_iptables_rules_by_interface(chain: &str, iface: &str) -> Result<()> {
+    let output = Command::new("iptables")
+        .args(["-S", chain])
+        .output()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        if line.contains(iface) {
+            // 将 "-A FORWARD ..." 转为 "-D FORWARD ..." 来删除
+            let delete_rule = line.replacen("-A ", "-D ", 1);
+            let args: Vec<&str> = delete_rule.split_whitespace().collect();
+            let _ = Command::new("iptables").args(&args).output();
+        }
+    }
+    Ok(())
+}
+
+/// 删除 NAT POSTROUTING 链中所有关联指定子网的规则
+fn delete_nat_rules_by_subnet(subnet: &str) -> Result<()> {
+    let output = Command::new("iptables")
+        .args(["-t", "nat", "-S", "POSTROUTING"])
+        .output()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        if line.contains(subnet) {
+            let delete_rule = line.replacen("-A ", "-D ", 1);
+            let args: Vec<&str> = delete_rule.split_whitespace().collect();
+            let _ = Command::new("iptables").args(["-t", "nat"]).args(&args).output();
+        }
+    }
     Ok(())
 }
 

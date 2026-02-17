@@ -1,4 +1,5 @@
 mod api;
+mod db;
 mod firecracker;
 mod network;
 mod proxy;
@@ -9,6 +10,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing_subscriber::EnvFilter;
 
+use crate::db::Database;
 use crate::network::SubnetAllocator;
 use crate::tenant::TenantManager;
 
@@ -32,11 +34,17 @@ async fn main() -> anyhow::Result<()> {
     let snapshot_dir = std::env::var("SNAPSHOT_DIR")
         .unwrap_or_else(|_| "/var/lib/microclaw-saas/snapshots".to_string());
     let bind_addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8080".to_string());
+    let db_path = std::env::var("DB_PATH")
+        .unwrap_or_else(|_| "/var/lib/microclaw-saas/control-plane.db".to_string());
+
+    let db = Arc::new(Database::new(&db_path)?);
+    tracing::info!("Database opened at {}", db_path);
 
     let subnet_allocator = SubnetAllocator::new("172.16.0.0/16");
 
-    let tenant_manager =
-        TenantManager::new(fc_bin, vmlinux, rootfs, data_dir, snapshot_dir, subnet_allocator);
+    let mut tenant_manager =
+        TenantManager::new(fc_bin, vmlinux, rootfs, data_dir, snapshot_dir, subnet_allocator, db);
+    tenant_manager.recover();
 
     let state = Arc::new(AppState {
         tenant_manager: RwLock::new(tenant_manager),

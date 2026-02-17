@@ -49,6 +49,10 @@ struct CreateTenantBody {
     channels: Vec<String>,
     #[serde(default)]
     env_vars: std::collections::HashMap<String, String>,
+    /// When true, the MicroClaw instance skips the approval loop for high-risk
+    /// tools (e.g. bash). Only enable for trusted tenants.
+    #[serde(default)]
+    skip_tool_approval: bool,
 }
 
 async fn create_tenant(
@@ -68,6 +72,7 @@ async fn create_tenant(
         tier,
         channels: body.channels,
         env_vars: body.env_vars,
+        skip_tool_approval: body.skip_tool_approval,
     };
 
     let mut manager = state.tenant_manager.write().await;
@@ -269,9 +274,15 @@ async fn debug_register_tenant(
         vm_pid: None,
         channels: vec!["web".into()],
         created_at: chrono::Utc::now(),
+        skip_tool_approval: false,
     };
 
     let mut manager = state.tenant_manager.write().await;
-    manager.register_tenant(tenant);
-    (StatusCode::CREATED, Json(serde_json::json!({"status": "registered"})))
+    match manager.register_tenant(tenant) {
+        Ok(()) => (StatusCode::CREATED, Json(serde_json::json!({"status": "registered"}))),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e.to_string()})),
+        ),
+    }
 }
