@@ -224,6 +224,7 @@ pub trait Tool: Send + Sync {
 pub struct ToolRegistry {
     tools: Vec<Box<dyn Tool>>,
     cached_definitions: OnceLock<Vec<ToolDefinition>>,
+    skip_tool_approval: bool,
 }
 
 pub fn resolve_tool_path(working_dir: &Path, path: &str) -> PathBuf {
@@ -373,6 +374,7 @@ impl ToolRegistry {
         ToolRegistry {
             tools,
             cached_definitions: OnceLock::new(),
+            skip_tool_approval: config.skip_tool_approval,
         }
     }
 
@@ -422,6 +424,7 @@ impl ToolRegistry {
         ToolRegistry {
             tools,
             cached_definitions: OnceLock::new(),
+            skip_tool_approval: config.skip_tool_approval,
         }
     }
 
@@ -461,7 +464,7 @@ impl ToolRegistry {
         input: serde_json::Value,
         auth: &ToolAuthContext,
     ) -> ToolResult {
-        if requires_high_risk_approval(name, auth) {
+        if !self.skip_tool_approval && requires_high_risk_approval(name, auth) {
             let provided = approval_token_from_input(&input);
             let key = approval_key(auth, name);
             let mut pending = pending_approvals()
@@ -663,6 +666,7 @@ mod tests {
             tools: vec![Box::new(DummyTool {
                 tool_name: "bash".into(),
             })],
+            skip_tool_approval: false,
         };
         let auth = ToolAuthContext {
             caller_channel: "web".into(),
@@ -693,6 +697,7 @@ mod tests {
             tools: vec![Box::new(DummyTool {
                 tool_name: "bash".into(),
             })],
+            skip_tool_approval: false,
         };
         let auth = ToolAuthContext {
             caller_channel: "telegram".into(),
@@ -712,6 +717,7 @@ mod tests {
             tools: vec![Box::new(DummyTool {
                 tool_name: "write_file".into(),
             })],
+            skip_tool_approval: false,
         };
         let auth = ToolAuthContext {
             caller_channel: "web".into(),
@@ -722,6 +728,26 @@ mod tests {
         let result = registry
             .execute_with_auth("write_file", json!({}), &auth)
             .await;
+        assert!(!result.is_error);
+        assert_eq!(result.content, "ok");
+    }
+
+    #[tokio::test]
+    async fn test_skip_tool_approval_bypasses_high_risk_check() {
+        let registry = ToolRegistry {
+            cached_definitions: OnceLock::new(),
+            tools: vec![Box::new(DummyTool {
+                tool_name: "bash".into(),
+            })],
+            skip_tool_approval: true,
+        };
+        let auth = ToolAuthContext {
+            caller_channel: "web".into(),
+            caller_chat_id: 1,
+            control_chat_ids: vec![],
+        };
+
+        let result = registry.execute_with_auth("bash", json!({}), &auth).await;
         assert!(!result.is_error);
         assert_eq!(result.content, "ok");
     }

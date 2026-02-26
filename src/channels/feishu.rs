@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -1109,6 +1110,33 @@ async fn send_ack(write: &WsSink, request_frame: &pb::Frame) {
 }
 
 // ---------------------------------------------------------------------------
+// Message deduplication cache (6-hour TTL)
+// ---------------------------------------------------------------------------
+
+static DEDUP_CACHE: std::sync::LazyLock<tokio::sync::Mutex<HashMap<String, Instant>>> =
+    std::sync::LazyLock::new(|| tokio::sync::Mutex::new(HashMap::new()));
+
+const DEDUP_TTL: Duration = Duration::from_secs(6 * 3600);
+
+/// Returns `true` if this message_id has already been seen (duplicate).
+/// Also evicts expired entries on each call.
+async fn is_duplicate_message(message_id: &str) -> bool {
+    if message_id.is_empty() {
+        return false;
+    }
+    let mut cache = DEDUP_CACHE.lock().await;
+    let now = Instant::now();
+    // Evict expired entries
+    cache.retain(|_, ts| now.duration_since(*ts) < DEDUP_TTL);
+    // Check and insert
+    if cache.contains_key(message_id) {
+        return true;
+    }
+    cache.insert(message_id.to_string(), now);
+    false
+}
+
+// ---------------------------------------------------------------------------
 // Event handling (shared by WS and webhook)
 // ---------------------------------------------------------------------------
 
@@ -1182,6 +1210,14 @@ async fn handle_feishu_event(
         .get("message_id")
         .and_then(|v| v.as_str())
         .unwrap_or("");
+
+    info!("Feishu event: message_id={message_id}, chat_id={chat_id_str}");
+
+    // Deduplicate: skip if this message_id was already processed
+    if is_duplicate_message(message_id).await {
+        info!("Feishu: skipping duplicate message_id={message_id}");
+        return;
+    }
 
     if chat_id_str.is_empty() || content_raw.is_empty() {
         return;

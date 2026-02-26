@@ -20,6 +20,26 @@ use crate::llm_types::{
     ResponseContentBlock, ToolDefinition, Usage,
 };
 
+/// Convert a `MessageContent` into a `Vec<ContentBlock>`, wrapping plain text
+/// in a single `Text` block.
+fn content_to_blocks(content: MessageContent) -> Vec<ContentBlock> {
+    match content {
+        MessageContent::Blocks(b) => b,
+        MessageContent::Text(t) => vec![ContentBlock::Text { text: t }],
+    }
+}
+
+/// Merge `other` into `prev` (same role).  Both are converted to block form
+/// so that tool_result blocks, text, and images are preserved.
+fn merge_message_content(prev: &mut Message, other: Message) {
+    let mut blocks = content_to_blocks(std::mem::replace(
+        &mut prev.content,
+        MessageContent::Text(String::new()),
+    ));
+    blocks.extend(content_to_blocks(other.content));
+    prev.content = MessageContent::Blocks(blocks);
+}
+
 /// Remove orphaned `ToolResult` blocks whose `tool_use_id` does not match any
 /// `ToolUse` block in the conversation.  This can happen after session
 /// compaction splits a tool_use / tool_result pair.
@@ -40,7 +60,7 @@ fn sanitize_messages(messages: Vec<Message>) -> Vec<Message> {
         })
         .collect();
 
-    messages
+    let filtered: Vec<Message> = messages
         .into_iter()
         .filter_map(|msg| {
             if msg.role != "user" {
@@ -72,7 +92,24 @@ fn sanitize_messages(messages: Vec<Message>) -> Vec<Message> {
                 }),
             }
         })
-        .collect()
+        .collect();
+
+    // Merge consecutive same-role messages to avoid API rejection.
+    // This can happen when session compaction or the empty-reply retry
+    // path produces adjacent user (or assistant) messages.
+    let mut merged: Vec<Message> = Vec::with_capacity(filtered.len());
+    for msg in filtered {
+        let should_merge = merged
+            .last()
+            .is_some_and(|prev: &Message| prev.role == msg.role);
+        if should_merge {
+            let prev = merged.last_mut().unwrap();
+            merge_message_content(prev, msg);
+        } else {
+            merged.push(msg);
+        }
+    }
+    merged
 }
 
 #[derive(Default)]
@@ -2004,6 +2041,7 @@ mod tests {
             reflector_enabled: true,
             reflector_interval_mins: 15,
             soul_path: None,
+            skip_tool_approval: false,
             channels: std::collections::HashMap::new(),
         };
         // Should not panic
@@ -2054,6 +2092,7 @@ mod tests {
             reflector_enabled: true,
             reflector_interval_mins: 15,
             soul_path: None,
+            skip_tool_approval: false,
             channels: std::collections::HashMap::new(),
         };
         let _provider = create_provider(&config);
@@ -2169,6 +2208,7 @@ mod tests {
             reflector_enabled: true,
             reflector_interval_mins: 15,
             soul_path: None,
+            skip_tool_approval: false,
             channels: std::collections::HashMap::new(),
         };
         let provider = OpenAiProvider::new(&config);
@@ -2323,6 +2363,7 @@ mod tests {
             reflector_enabled: true,
             reflector_interval_mins: 15,
             soul_path: None,
+            skip_tool_approval: false,
             channels: std::collections::HashMap::new(),
         };
         let provider = OpenAiProvider::new(&config);

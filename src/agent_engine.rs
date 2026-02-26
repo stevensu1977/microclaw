@@ -510,14 +510,18 @@ pub(crate) async fn process_with_agent_impl(
                     "Empty visible model reply; injecting runtime guard and retrying once (chat_id={})",
                     chat_id
                 );
-                // Only include the assistant message if it has non-empty text;
-                // the Anthropic API rejects blank text content blocks.
-                if !text.trim().is_empty() {
-                    messages.push(Message {
-                        role: "assistant".into(),
-                        content: MessageContent::Text(text.clone()),
-                    });
-                }
+                // Always include an assistant message to maintain role alternation.
+                // The Anthropic API rejects blank text content blocks, so use a
+                // placeholder when the model returned empty text.
+                let assistant_text = if text.trim().is_empty() {
+                    "(thinking)".to_string()
+                } else {
+                    text.clone()
+                };
+                messages.push(Message {
+                    role: "assistant".into(),
+                    content: MessageContent::Text(assistant_text),
+                });
                 messages.push(Message {
                     role: "user".into(),
                     content: MessageContent::Text(
@@ -558,6 +562,15 @@ pub(crate) async fn process_with_agent_impl(
                     "{final_text}\n\nExecution note: some tool actions failed in this request ({tools}). Ask me to retry if needed."
                 )
             };
+            // Clear the TODO list so the next request starts fresh
+            let todo_path = std::path::PathBuf::from(&state.config.data_dir)
+                .join("groups")
+                .join(chat_id.to_string())
+                .join("TODO.json");
+            if todo_path.exists() {
+                let _ = std::fs::remove_file(&todo_path);
+            }
+
             if let Some(tx) = event_tx {
                 let _ = tx.send(AgentEvent::FinalResponse {
                     text: final_text.clone(),
@@ -570,15 +583,22 @@ pub(crate) async fn process_with_agent_impl(
             let assistant_content: Vec<ContentBlock> = response
                 .content
                 .iter()
-                .map(|block| match block {
+                .filter_map(|block| match block {
                     ResponseContentBlock::Text { text } => {
-                        ContentBlock::Text { text: text.clone() }
+                        // Anthropic API rejects blank text blocks; drop them.
+                        if text.trim().is_empty() {
+                            None
+                        } else {
+                            Some(ContentBlock::Text { text: text.clone() })
+                        }
                     }
-                    ResponseContentBlock::ToolUse { id, name, input } => ContentBlock::ToolUse {
-                        id: id.clone(),
-                        name: name.clone(),
-                        input: input.clone(),
-                    },
+                    ResponseContentBlock::ToolUse { id, name, input } => {
+                        Some(ContentBlock::ToolUse {
+                            id: id.clone(),
+                            name: name.clone(),
+                            input: input.clone(),
+                        })
+                    }
                 })
                 .collect();
 
@@ -1483,6 +1503,7 @@ mod tests {
             reflector_enabled: true,
             reflector_interval_mins: 15,
             soul_path: None,
+            skip_tool_approval: false,
             channels: std::collections::HashMap::new(),
         };
         cfg.data_dir = base_dir.to_string_lossy().to_string();
@@ -1818,6 +1839,7 @@ mod tests {
             embedding_dim: None,
             reflector_enabled: true,
             reflector_interval_mins: 15,
+            skip_tool_approval: false,
             channels: std::collections::HashMap::new(),
         };
 
@@ -1878,6 +1900,7 @@ mod tests {
             embedding_dim: None,
             reflector_enabled: true,
             reflector_interval_mins: 15,
+            skip_tool_approval: false,
             channels: std::collections::HashMap::new(),
         };
 

@@ -256,6 +256,7 @@ mod tests {
             reflector_enabled: true,
             reflector_interval_mins: 15,
             soul_path: None,
+            skip_tool_approval: false,
             channels: std::collections::HashMap::new(),
         }
     }

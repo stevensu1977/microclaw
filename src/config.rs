@@ -97,6 +97,9 @@ fn default_reflector_interval_mins() -> u64 {
 fn default_soul_path() -> Option<String> {
     None
 }
+fn default_skip_tool_approval() -> bool {
+    false
+}
 fn is_local_web_host(host: &str) -> bool {
     let h = host.trim().to_ascii_lowercase();
     h == "127.0.0.1" || h == "localhost" || h == "::1"
@@ -205,6 +208,12 @@ pub struct Config {
     /// If not set, looks for SOUL.md in data_dir root, then current directory.
     #[serde(default = "default_soul_path")]
     pub soul_path: Option<String>,
+
+    /// Skip the high-risk tool approval loop (e.g. for bash).
+    /// Useful when running inside an isolated environment like Firecracker.
+    /// Can also be set via MICROCLAW_SKIP_TOOL_APPROVAL=true env var.
+    #[serde(default = "default_skip_tool_approval")]
+    pub skip_tool_approval: bool,
 
     // --- Channel registry (new dynamic config) ---
     /// Per-channel configuration. Keys are channel names (e.g. "telegram", "discord", "slack", "web").
@@ -394,6 +403,11 @@ impl Config {
             }
         }
 
+        // Allow env var override for skip_tool_approval
+        if let Ok(val) = std::env::var("MICROCLAW_SKIP_TOOL_APPROVAL") {
+            self.skip_tool_approval = matches!(val.as_str(), "1" | "true" | "yes");
+        }
+
         // Synthesize `channels` map from legacy flat fields if empty
         if self.channels.is_empty() {
             if !self.telegram_bot_token.trim().is_empty() {
@@ -576,6 +590,7 @@ mod tests {
             reflector_enabled: true,
             reflector_interval_mins: 15,
             soul_path: None,
+            skip_tool_approval: false,
             channels: HashMap::new(),
         }
     }

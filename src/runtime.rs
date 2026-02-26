@@ -5,6 +5,23 @@ use tracing::info;
 #[cfg(feature = "sqlite-vec")]
 use tracing::warn;
 
+/// Wait for any termination signal: SIGTERM, SIGHUP, or Ctrl-C.
+/// Returns a human-readable label of which signal was received.
+async fn shutdown_signal() -> &'static str {
+    use tokio::signal::unix::{signal, SignalKind};
+
+    let mut sigterm =
+        signal(SignalKind::terminate()).expect("failed to register SIGTERM handler");
+    let mut sighup =
+        signal(SignalKind::hangup()).expect("failed to register SIGHUP handler");
+
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => "SIGINT (Ctrl-C)",
+        _ = sigterm.recv() => "SIGTERM",
+        _ = sighup.recv() => "SIGHUP",
+    }
+}
+
 use crate::channel_adapter::ChannelRegistry;
 use crate::channels::telegram::TelegramChannelConfig;
 use crate::channels::{DiscordAdapter, FeishuAdapter, SlackAdapter, TelegramAdapter};
@@ -162,9 +179,16 @@ pub async fn run(
         crate::telegram::start_telegram_bot(state, bot).await
     } else if state.config.web_enabled || discord_token.is_some() || has_slack || has_feishu {
         info!("Running without Telegram adapter; waiting for other channels");
-        tokio::signal::ctrl_c()
-            .await
-            .map_err(|e| anyhow!("Failed to listen for Ctrl-C: {e}"))?;
+        let sig = shutdown_signal().await;
+        info!("Received {sig}, starting graceful shutdown...");
+
+        // Graceful shutdown: give in-flight tasks a moment to complete
+        info!("Allowing in-flight tasks 2s to finish...");
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+        // SQLite WAL mode ensures DB consistency even on hard kill,
+        // but explicit flush is good practice
+        info!("Shutdown complete.");
         Ok(())
     } else {
         Err(anyhow!(

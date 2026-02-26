@@ -69,6 +69,11 @@ compact_keep_recent: 20
 # Non-control chats are restricted to their own chat_id.
 # control_chat_ids: []
 
+# Skip the high-risk tool approval loop (e.g. for bash).
+# Useful when running inside an isolated environment like Firecracker.
+# Can also be set via MICROCLAW_SKIP_TOOL_APPROVAL=true env var.
+# skip_tool_approval: false
+
 # WhatsApp Cloud API (optional)
 # whatsapp_access_token: ""
 # whatsapp_phone_number_id: ""
